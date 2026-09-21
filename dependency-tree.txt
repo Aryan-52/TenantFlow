@@ -1,0 +1,63 @@
+PS D:\ARYAN\Projects\TenantFlow\services\tenantflow-backend> docker ps
+CONTAINER ID   IMAGE         COMMAND                  CREATED          STATUS          PORTS                                         NAMES
+a80b57f172fb   postgres:17   "docker-entrypoint.s…"   45 minutes ago   Up 45 minutes   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp   tenantflow-postgres
+PS D:\ARYAN\Projects\TenantFlow\services\tenantflow-backend> docker exec -it tenantflow-postgres psql -U tenantflow -d tenantflow
+psql (17.10 (Debian 17.10-1.pgdg13+1))
+Type "help" for help.
+
+tenantflow=# SELECT version();
+                                                       version                                                        
+----------------------------------------------------------------------------------------------------------------------
+ PostgreSQL 17.10 (Debian 17.10-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+(1 row)
+
+tenantflow=# \q
+PS D:\ARYAN\Projects\TenantFlow\services\tenantflow-backend> .\mvnw spring-boot:run *> error.log
+PS D:\ARYAN\Projects\TenantFlow\services\tenantflow-backend> Get-Content error.log | Select-String "Caused by","FATAL","Exception","Connection","password","database","role"
+
+2026-07-21T20:59:05.916+05:30  WARN 7596 --- [tenantflow-backend] [  restartedMain] org.hibernate.orm.jdbc.error             : FATAL: invalid value for 
+parameter "TimeZone": "Asia/Calcutta"
+2026-07-21T20:59:05.917+05:30  WARN 7596 --- [tenantflow-backend] [  restartedMain] org.hibernate.orm.jdbc                   : HHH100046: Could not obtain 
+connection to query JDBC database metadata
+org.hibernate.exception.DataException: Unable to obtain isolated JDBC connection [FATAL: invalid value for parameter "TimeZone": "Asia/Calcutta"] [n/a]
+        at org.hibernate.exception.internal.SQLStateConversionDelegate.convert(SQLStateConversionDelegate.java:84) ~[hibernate-core-7.4.1.Final.jar:7.4.1.Final]
+        at org.hibernate.exception.internal.StandardSQLExceptionConverter.convert(StandardSQLExceptionConverter.java:34) 
+~[hibernate-core-7.4.1.Final.jar:7.4.1.Final]
+        at org.hibernate.engine.jdbc.spi.SqlExceptionHelper.convert(SqlExceptionHelper.java:115) ~[hibernate-core-7.4.1.Final.jar:7.4.1.Final]
+        at org.hibernate.engine.jdbc.spi.SqlExceptionHelper.convert(SqlExceptionHelper.java:101) ~[hibernate-core-7.4.1.Final.jar:7.4.1.Final]
+        at org.hibernate.boot.model.relational.Database.<init>(Database.java:44) ~[hibernate-core-7.4.1.Final.jar:7.4.1.Final]
+        at org.hibernate.boot.internal.InFlightMetadataCollectorImpl.getDatabase(InFlightMetadataCollectorImpl.java:251) 
+~[hibernate-core-7.4.1.Final.jar:7.4.1.Final]
+Caused by: org.postgresql.util.PSQLException: FATAL: invalid value for parameter "TimeZone": "Asia/Calcutta"
+        at org.postgresql.core.v3.ConnectionFactoryImpl.openConnectionImpl(ConnectionFactoryImpl.java:396) ~[postgresql-42.7.11.jar:42.7.11]
+        at org.postgresql.core.ConnectionFactory.openConnection(ConnectionFactory.java:52) ~[postgresql-42.7.11.jar:42.7.11]
+        at org.postgresql.jdbc.PgConnection.<init>(PgConnection.java:290) ~[postgresql-42.7.11.jar:42.7.11]
+        at org.postgresql.Driver.makeConnection(Driver.java:448) ~[postgresql-42.7.11.jar:42.7.11]
+        at com.zaxxer.hikari.util.DriverDataSource.getConnection(DriverDataSource.java:144) ~[HikariCP-7.0.2.jar:na]
+        at com.zaxxer.hikari.pool.PoolBase.newConnection(PoolBase.java:373) ~[HikariCP-7.0.2.jar:na]
+        at com.zaxxer.hikari.HikariDataSource.getConnection(HikariDataSource.java:111) ~[HikariCP-7.0.2.jar:na]
+        at org.hibernate.engine.jdbc.connections.internal.DataSourceConnectionProvider.getConnection(DataSourceConnectionProvider.java:149) 
+~[hibernate-core-7.4.1.Final.jar:7.4.1.Final]
+        at 
+org.hibernate.engine.jdbc.env.internal.JdbcEnvironmentInitiator$ConnectionProviderJdbcConnectionAccess.obtainConnection(JdbcEnvironmentInitiator.java:508) 
+~[hibernate-core-7.4.1.Final.jar:7.4.1.Final]
+2026-07-21T20:59:05.920+05:30  WARN 7596 --- [tenantflow-backend] [  restartedMain] ConfigServletWebServerApplicationContext : Exception encountered 
+during context initialization - cancelling refresh attempt: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 
+'entityManagerFactory' defined in class path resource [org/springframework/boot/hibernate/autoconfigure/HibernateJpaConfiguration.class]: Unable to create 
+requested service [org.hibernate.engine.jdbc.env.spi.JdbcEnvironment] due to: Unable to determine Dialect without JDBC metadata (please set 
+'jakarta.persistence.jdbc.url' for common cases or 'hibernate.dialect' when a custom Dialect implementation must be provided)
+org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'entityManagerFactory' defined in class path resource 
+[org/springframework/boot/hibernate/autoconfigure/HibernateJpaConfiguration.class]: Unable to create requested service 
+[org.hibernate.engine.jdbc.env.spi.JdbcEnvironment] due to: Unable to determine Dialect without JDBC metadata (please set 'jakarta.persistence.jdbc.url' 
+for common cases or 'hibernate.dialect' when a custom Dialect implementation must be provided)
+Caused by: org.hibernate.service.spi.ServiceException: Unable to create requested service [org.hibernate.engine.jdbc.env.spi.JdbcEnvironment] due to: 
+Unable to determine Dialect without JDBC metadata (please set 'jakarta.persistence.jdbc.url' for common cases or 'hibernate.dialect' when a custom Dialect 
+implementation must be provided)
+        at org.hibernate.boot.model.relational.Database.<init>(Database.java:44) ~[hibernate-core-7.4.1.Final.jar:7.4.1.Final]
+        at org.hibernate.boot.internal.InFlightMetadataCollectorImpl.getDatabase(InFlightMetadataCollectorImpl.java:251) 
+~[hibernate-core-7.4.1.Final.jar:7.4.1.Final]
+Caused by: org.hibernate.HibernateException: Unable to determine Dialect without JDBC metadata (please set 'jakarta.persistence.jdbc.url' for common cases 
+or 'hibernate.dialect' when a custom Dialect implementation must be provided)
+
+
+PS D:\ARYAN\Projects\TenantFlow\services\tenantflow-backend> 
