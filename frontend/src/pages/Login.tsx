@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { Mail } from 'lucide-react';
 import client from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { PasswordInput } from '../components/ui/PasswordInput';
 import { ErrorState } from '../components/ui/ErrorState';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
-  
+
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -44,54 +45,46 @@ const Login = () => {
 
   return (
     <div className="auth-container">
-      <div className="card auth-card">
-        <div className="text-center mb-6">
-          <div style={{ width: 40, height: 40, backgroundColor: 'var(--primary-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.25rem', fontWeight: 'bold', margin: '0 auto 1rem' }}>T</div>
-          <h2>Welcome back</h2>
-          <p className="text-muted">Sign in to your TenantFlow account</p>
+      <div className="card auth-card card-padded">
+        <div className="auth-brand" style={{ flexDirection: 'column' }}>
+          <span className="sidebar-brand-mark" style={{ width: 40, height: 40, fontSize: '1.25rem', marginBottom: 'var(--space-2)' }}>
+            T
+          </span>
+          <h2 className="m-0">Welcome back</h2>
+          <p className="text-muted text-sm m-0">Sign in to your TenantFlow account</p>
         </div>
-        
+
         <ErrorState message={error} />
-        
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full"
-            />
-            {fieldErrors.email && <div className="text-danger text-sm mt-1">{fieldErrors.email}</div>}
-          </div>
-          <div className="form-group mb-6">
-            <label>Password</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full"
-                style={{ paddingRight: '2.5rem' }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-            {fieldErrors.password && <div className="text-danger text-sm mt-1">{fieldErrors.password}</div>}
-          </div>
-          <Button type="submit" className="w-full" isLoading={loading} disabled={loading}>
+
+        <form onSubmit={handleSubmit} noValidate>
+          <Input
+            label="Email"
+            type="email"
+            icon={<Mail size={15} />}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            error={fieldErrors.email}
+            required
+            autoComplete="email"
+            autoFocus
+          />
+          <PasswordInput
+            label="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            error={fieldErrors.password}
+            required
+            autoComplete="current-password"
+          />
+          <Button type="submit" fullWidth isLoading={loading} disabled={loading}>
             {loading ? 'Signing in...' : 'Sign In'}
           </Button>
         </form>
         <p className="text-center text-muted mt-6 text-sm">
-          Don't have an account? <Link to="/register" style={{ color: 'var(--primary-color)', textDecoration: 'none', fontWeight: 500 }}>Sign up</Link>
+          Don't have an account?{' '}
+          <Link to="/register" style={{ color: 'var(--primary-color)', fontWeight: 500 }}>
+            Sign up
+          </Link>
         </p>
       </div>
     </div>

@@ -21,12 +21,13 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 @Configuration
 @EnableMethodSecurity
 @RequiredArgsConstructor
-@EnableConfigurationProperties(JwtProperties.class)
+@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class})
 public class SecurityConfig {
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 	private final RestAuthenticationEntryPoint authenticationEntryPoint;
 	private final RestAccessDeniedHandler accessDeniedHandler;
+	private final CorsProperties corsProperties;
 
 	@Bean
 	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -54,7 +55,7 @@ public class SecurityConfig {
 	@Bean
 	public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
 		org.springframework.web.cors.CorsConfiguration configuration = new org.springframework.web.cors.CorsConfiguration();
-		configuration.setAllowedOrigins(java.util.List.of("http://localhost:3000"));
+		configuration.setAllowedOrigins(corsProperties.allowedOrigins());
 		configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 		configuration.setAllowedHeaders(java.util.List.of("*"));
 		configuration.setAllowCredentials(true);

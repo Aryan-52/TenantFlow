@@ -7,11 +7,13 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { Badge } from '../components/ui/Badge';
+import { RoleBadge } from '../components/ui/Badge';
+import { Avatar } from '../components/ui/Avatar';
 import { Table } from '../components/ui/Table';
 import { TableSkeleton } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { EmptyState } from '../components/ui/EmptyState';
+import { PageHeader } from '../components/ui/PageHeader';
 import { Users, UserPlus, Trash2 } from 'lucide-react';
 
 export interface Member {
@@ -29,7 +31,8 @@ const Members = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
+  const [actionError, setActionError] = useState('');
+
   const [showAdd, setShowAdd] = useState(false);
   const [addEmail, setAddEmail] = useState('');
   const [addRole, setAddRole] = useState<'ADMIN' | 'MEMBER' | 'OWNER'>('MEMBER');
@@ -44,19 +47,28 @@ const Members = () => {
 
   useEffect(() => {
     fetchMembers();
-  }, [currentTenant]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTenant?.id]);
 
   const fetchMembers = async () => {
     if (!currentTenant) return;
     setLoading(true);
+    setError('');
     try {
       const res = await client.get(`/api/tenants/${currentTenant.id}/members`);
       setMembers(res.data);
     } catch (err: any) {
-      setError('Failed to load members');
+      setError(err.response?.data?.message || 'Failed to load members');
     } finally {
       setLoading(false);
     }
+  };
+
+  const openAdd = () => {
+    setAddEmail('');
+    setAddRole('MEMBER');
+    setAddError('');
+    setShowAdd(true);
   };
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -67,11 +79,9 @@ const Members = () => {
     try {
       await client.post(`/api/tenants/${currentTenant.id}/members`, {
         email: addEmail,
-        role: addRole
+        role: addRole,
       });
       setShowAdd(false);
-      setAddEmail('');
-      setAddRole('MEMBER');
       fetchMembers();
     } catch (err: any) {
       setAddError(err.response?.data?.message || 'Failed to add member');
@@ -82,23 +92,25 @@ const Members = () => {
 
   const handleRoleChange = async (memberId: string, newRole: string) => {
     if (!currentTenant) return;
+    setActionError('');
     try {
       await client.put(`/api/tenants/${currentTenant.id}/members/${memberId}`, { role: newRole });
       fetchMembers();
     } catch (err: any) {
-      alert('Failed to update role: ' + (err.response?.data?.message || err.message));
+      setActionError(err.response?.data?.message || 'Failed to update role');
     }
   };
 
   const handleRemove = async () => {
     if (!currentTenant || !deleteId) return;
     setDeleteLoading(true);
+    setActionError('');
     try {
       await client.delete(`/api/tenants/${currentTenant.id}/members/${deleteId}`);
       setDeleteId(null);
       fetchMembers();
     } catch (err: any) {
-      alert('Failed to remove member: ' + (err.response?.data?.message || err.message));
+      setActionError(err.response?.data?.message || 'Failed to remove member');
     } finally {
       setDeleteLoading(false);
     }
@@ -108,57 +120,60 @@ const Members = () => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="mb-1">Team Members</h1>
-          <p className="text-muted text-sm">Manage who has access to {currentTenant.name}.</p>
-        </div>
-        {canManage && (
-          <Button onClick={() => setShowAdd(true)}>
-            <UserPlus size={16} /> Add Member
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title="Team members"
+        subtitle={`Manage who has access to ${currentTenant.name}.`}
+        actions={
+          canManage ? (
+            <Button onClick={openAdd}>
+              <UserPlus size={16} /> Add member
+            </Button>
+          ) : undefined
+        }
+      />
 
       <ErrorState message={error} />
+      <ErrorState message={actionError} />
 
-      <Modal 
-        isOpen={showAdd} 
-        onClose={() => setShowAdd(false)} 
-        title="Add Member"
-      >
-        <form id="add-member-form" onSubmit={handleAdd}>
+      <Modal isOpen={showAdd} onClose={() => setShowAdd(false)} title="Add member">
+        <form id="add-member-form" onSubmit={handleAdd} noValidate>
           <ErrorState message={addError} />
-          <Input 
-            label="Email Address" 
+          <Input
+            label="Email address"
             type="email"
-            value={addEmail} 
-            onChange={e => setAddEmail(e.target.value)} 
-            required 
+            value={addEmail}
+            onChange={(e) => setAddEmail(e.target.value)}
+            required
             placeholder="colleague@example.com"
+            hint="This person must already have a TenantFlow account with this email address — there's no email invitation yet."
+            autoFocus
           />
-          <Select 
-            label="Role" 
-            value={addRole} 
-            onChange={e => setAddRole(e.target.value as any)}
+          <Select
+            label="Role"
+            value={addRole}
+            onChange={(e) => setAddRole(e.target.value as any)}
             options={[
-              { value: 'MEMBER', label: 'Member - Can view and manage tasks' },
-              { value: 'ADMIN', label: 'Admin - Can manage projects and members' },
-              ...(isOwner ? [{ value: 'OWNER', label: 'Owner - Full access' }] : [])
+              { value: 'MEMBER', label: 'Member — can view and manage tasks' },
+              { value: 'ADMIN', label: 'Admin — can manage projects and members' },
+              ...(isOwner ? [{ value: 'OWNER', label: 'Owner — full access' }] : []),
             ]}
           />
         </form>
-        <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-color" style={{ borderTop: '1px solid var(--border-color)' }}>
-          <Button variant="ghost" onClick={() => setShowAdd(false)}>Cancel</Button>
-          <Button type="submit" form="add-member-form" isLoading={addLoading}>Add Member</Button>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setShowAdd(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" form="add-member-form" isLoading={addLoading}>
+            Add member
+          </Button>
         </div>
       </Modal>
 
       <ConfirmDialog
         isOpen={!!deleteId}
-        title="Remove Member"
+        title="Remove member"
         message="Are you sure you want to remove this member from the workspace? They will lose all access."
-        confirmText="Remove Member"
+        confirmText="Remove member"
         isDestructive
         isLoading={deleteLoading}
         onConfirm={handleRemove}
@@ -168,11 +183,11 @@ const Members = () => {
       {loading ? (
         <TableSkeleton rows={4} cols={5} />
       ) : members.length === 0 ? (
-        <EmptyState 
-          icon={<Users size={48} />}
+        <EmptyState
+          icon={<Users size={24} />}
           title="No members found"
-          description="It's quiet here. Invite team members to collaborate."
-          action={canManage ? <Button onClick={() => setShowAdd(true)}>Add Member</Button> : undefined}
+          description="It's quiet here. Add team members to collaborate."
+          action={canManage ? <Button onClick={openAdd}>Add member</Button> : undefined}
         />
       ) : (
         <Table>
@@ -182,11 +197,11 @@ const Members = () => {
               <th>Email</th>
               <th>Role</th>
               <th>Joined</th>
-              {canManage && <th>Actions</th>}
+              {canManage && <th style={{ width: '80px' }}>Actions</th>}
             </tr>
           </thead>
           <tbody>
-            {members.map(m => {
+            {members.map((m) => {
               const isSelf = m.userId === user?.id;
               const isHigherRole = m.role === 'OWNER' && !isOwner;
               const isDisabled = isSelf || isHigherRole;
@@ -195,42 +210,28 @@ const Members = () => {
                 <tr key={m.id}>
                   <td>
                     <div className="flex items-center gap-2">
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: 'var(--primary-light)', color: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.75rem' }}>
-                        {m.name.charAt(0).toUpperCase()}
-                      </div>
+                      <Avatar name={m.name} size="sm" />
                       <span className="font-medium">{m.name}</span>
-                      {isSelf && <Badge color="blue">You</Badge>}
+                      {isSelf && <RoleBadgeYou />}
                     </div>
                   </td>
                   <td className="text-muted">{m.email}</td>
                   <td>
                     {canManage && !isDisabled ? (
-                      <select 
-                        value={m.role} 
-                        onChange={e => handleRoleChange(m.id, e.target.value)}
-                        style={{ padding: '0.25rem 0.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}
-                      >
+                      <select value={m.role} onChange={(e) => handleRoleChange(m.id, e.target.value)} style={{ padding: '0.25rem 1.5rem 0.25rem 0.5rem', fontSize: 'var(--text-sm)' }}>
                         <option value="MEMBER">Member</option>
                         <option value="ADMIN">Admin</option>
                         {(isOwner || m.role === 'OWNER') && <option value="OWNER">Owner</option>}
                       </select>
                     ) : (
-                      <Badge color={m.role === 'OWNER' ? 'red' : m.role === 'ADMIN' ? 'yellow' : 'gray'}>
-                        {m.role}
-                      </Badge>
+                      <RoleBadge role={m.role} />
                     )}
                   </td>
                   <td className="text-muted text-sm">{new Date(m.joinedAt).toLocaleDateString()}</td>
                   {canManage && (
                     <td>
                       {!isDisabled && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => setDeleteId(m.id)}
-                          className="text-danger"
-                          title="Remove Member"
-                        >
+                        <Button variant="ghost" size="sm" className="btn-icon text-danger" onClick={() => setDeleteId(m.id)} title="Remove member">
                           <Trash2 size={16} />
                         </Button>
                       )}
@@ -245,5 +246,7 @@ const Members = () => {
     </div>
   );
 };
+
+const RoleBadgeYou = () => <span className="badge badge-blue">You</span>;
 
 export default Members;

@@ -2,18 +2,26 @@ package io.github.aryan52.tenantflow.error;
 
 import io.github.aryan52.tenantflow.auth.DuplicateEmailException;
 import io.github.aryan52.tenantflow.auth.InvalidCredentialsException;
+import io.github.aryan52.tenantflow.user.InvalidCurrentPasswordException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import java.util.TreeMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
 	@ExceptionHandler(DuplicateEmailException.class)
 	public ResponseEntity<ApiErrorResponse> handleDuplicateEmail(
@@ -26,6 +34,14 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(InvalidCredentialsException.class)
 	public ResponseEntity<ApiErrorResponse> handleInvalidCredentials(
 			InvalidCredentialsException ex,
+			HttpServletRequest request
+	) {
+		return error(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(InvalidCurrentPasswordException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidCurrentPassword(
+			InvalidCurrentPasswordException ex,
 			HttpServletRequest request
 	) {
 		return error(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
@@ -88,6 +104,43 @@ public class GlobalExceptionHandler {
 			HttpServletRequest request
 	) {
 		return error(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<ApiErrorResponse> handleTypeMismatch(
+			MethodArgumentTypeMismatchException ex,
+			HttpServletRequest request
+	) {
+		return error(HttpStatus.BAD_REQUEST, "Invalid value for parameter '" + ex.getName() + "'", request);
+	}
+
+	// These two exception types are normally resolved by RestAccessDeniedHandler /
+	// RestAuthenticationEntryPoint via the Spring Security filter chain. They are handled
+	// explicitly here too (with matching messages) so that the generic Exception handler
+	// below can never intercept them first and mask a 401/403 as a 500.
+	@ExceptionHandler(AccessDeniedException.class)
+	public ResponseEntity<ApiErrorResponse> handleAccessDenied(
+			AccessDeniedException ex,
+			HttpServletRequest request
+	) {
+		return error(HttpStatus.FORBIDDEN, "Access denied", request);
+	}
+
+	@ExceptionHandler(AuthenticationException.class)
+	public ResponseEntity<ApiErrorResponse> handleAuthentication(
+			AuthenticationException ex,
+			HttpServletRequest request
+	) {
+		return error(HttpStatus.UNAUTHORIZED, "Authentication required", request);
+	}
+
+	@ExceptionHandler(Exception.class)
+	public ResponseEntity<ApiErrorResponse> handleUnexpected(
+			Exception ex,
+			HttpServletRequest request
+	) {
+		log.error("Unhandled exception while processing {} {}", request.getMethod(), request.getRequestURI(), ex);
+		return error(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", request);
 	}
 
 	private ResponseEntity<ApiErrorResponse> error(HttpStatus status, String message, HttpServletRequest request) {

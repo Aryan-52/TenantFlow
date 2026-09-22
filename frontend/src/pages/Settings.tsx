@@ -4,9 +4,11 @@ import client from '../api/client';
 import { useTenant } from '../contexts/TenantContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Badge } from '../components/ui/Badge';
+import { RoleBadge } from '../components/ui/Badge';
 import { ErrorState } from '../components/ui/ErrorState';
+import { Alert } from '../components/ui/Alert';
 import { Modal } from '../components/ui/Modal';
+import { PageHeader } from '../components/ui/PageHeader';
 import { Settings as SettingsIcon, ShieldAlert } from 'lucide-react';
 
 const Settings = () => {
@@ -17,7 +19,7 @@ const Settings = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  
+
   const [showDelete, setShowDelete] = useState(false);
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -60,7 +62,7 @@ const Settings = () => {
       setDeleteError('Slug does not match.');
       return;
     }
-    
+
     setDeleteLoading(true);
     setDeleteError('');
     try {
@@ -75,80 +77,91 @@ const Settings = () => {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="flex items-center gap-2 mb-6">
-        <SettingsIcon size={24} className="text-muted" />
-        <h1 className="mb-0">Workspace Settings</h1>
-      </div>
+      <PageHeader title="Workspace settings" subtitle={`Manage ${currentTenant.name}'s information and access.`} />
 
       <div className="card mb-6">
-        <h3 className="mb-4 border-b pb-2">General Information</h3>
-        
-        <div className="flex gap-4 mb-6">
-          <div className="flex-1">
-            <p className="text-muted text-sm font-medium mb-1">Your Role</p>
-            <Badge color={currentTenant.myRole === 'OWNER' ? 'red' : 'yellow'}>{currentTenant.myRole}</Badge>
-          </div>
-          <div className="flex-1">
-            <p className="text-muted text-sm font-medium mb-1">Workspace Slug</p>
-            <code style={{ padding: '0.25rem 0.5rem', backgroundColor: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)' }}>{currentTenant.slug}</code>
-          </div>
+        <div className="card-header">
+          <h3 className="mb-0 flex items-center gap-2">
+            <SettingsIcon size={18} className="text-muted" /> General information
+          </h3>
         </div>
-
-        <ErrorState message={error} />
-        {success && (
-          <div style={{ backgroundColor: '#d1e7dd', border: '1px solid #a3cfbb', color: '#0f5132', padding: '0.75rem 1rem', borderRadius: '0.25rem', marginBottom: '1rem' }}>
-            {success}
+        <div className="card-body">
+          <div className="flex gap-6 mb-6">
+            <div className="flex-1">
+              <p className="text-muted text-sm font-medium mb-2">Your role</p>
+              <RoleBadge role={currentTenant.myRole as 'OWNER' | 'ADMIN' | 'MEMBER'} />
+            </div>
+            <div className="flex-1">
+              <p className="text-muted text-sm font-medium mb-2">Workspace slug</p>
+              <code className="font-mono text-sm p-2 rounded-md" style={{ backgroundColor: 'var(--bg-subtle)' }}>
+                {currentTenant.slug}
+              </code>
+            </div>
           </div>
-        )}
 
-        <form onSubmit={handleUpdate}>
-          <Input 
-            label="Workspace Name" 
-            value={name} 
-            onChange={e => setName(e.target.value)} 
-            required 
-            placeholder="e.g. Acme Corp"
-          />
-          <Button type="submit" isLoading={loading}>Save Changes</Button>
-        </form>
+          <ErrorState message={error} />
+          {success && <Alert variant="success" className="mb-4">{success}</Alert>}
+
+          <form onSubmit={handleUpdate} noValidate>
+            <Input label="Workspace name" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Acme Corp" />
+            <Button type="submit" isLoading={loading}>
+              Save changes
+            </Button>
+          </form>
+        </div>
       </div>
 
       {isOwner && (
-        <div className="card border-danger" style={{ borderColor: 'var(--danger-border)' }}>
-          <h3 className="text-danger flex items-center gap-2 mb-2"><ShieldAlert size={18} /> Danger Zone</h3>
-          <p className="text-muted mb-4 text-sm">
-            Deleting a workspace is irreversible. All projects, tasks, and members will be permanently removed. 
-            Proceed with caution.
-          </p>
-          <Button variant="danger" onClick={() => setShowDelete(true)}>Delete Workspace</Button>
+        <div className="card border-danger">
+          <div className="card-body">
+            <h3 className="text-danger flex items-center gap-2 mb-2">
+              <ShieldAlert size={18} /> Danger zone
+            </h3>
+            <p className="text-muted mb-4 text-sm">
+              Deleting a workspace is irreversible. All projects, tasks, and members will be permanently removed. Proceed with caution.
+            </p>
+            <Button variant="danger" onClick={() => setShowDelete(true)}>
+              Delete workspace
+            </Button>
+          </div>
         </div>
       )}
 
       <Modal
         isOpen={showDelete}
-        onClose={() => { setShowDelete(false); setDeleteConfirmSlug(''); setDeleteError(''); }}
-        title="Delete Workspace"
+        onClose={() => {
+          setShowDelete(false);
+          setDeleteConfirmSlug('');
+          setDeleteError('');
+        }}
+        title="Delete workspace"
+        size="sm"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setShowDelete(false)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => setShowDelete(false)}>
+              Cancel
+            </Button>
             <Button variant="danger" onClick={handleDelete} isLoading={deleteLoading} disabled={deleteConfirmSlug !== currentTenant.slug}>
-              Permanently Delete
+              Permanently delete
             </Button>
           </>
         }
       >
         <ErrorState message={deleteError} />
         <p className="mb-4">
-          Are you sure you want to delete the workspace <strong>{currentTenant.name}</strong>? 
-          This action cannot be undone.
+          Are you sure you want to delete the workspace <strong>{currentTenant.name}</strong>? This action cannot be undone.
         </p>
         <div className="form-group mb-0">
-          <label>Please type <strong>{currentTenant.slug}</strong> to confirm.</label>
-          <input 
-            type="text" 
-            value={deleteConfirmSlug} 
-            onChange={e => setDeleteConfirmSlug(e.target.value)} 
+          <label htmlFor="delete-confirm-slug">
+            Please type <strong>{currentTenant.slug}</strong> to confirm.
+          </label>
+          <input
+            id="delete-confirm-slug"
+            type="text"
+            value={deleteConfirmSlug}
+            onChange={(e) => setDeleteConfirmSlug(e.target.value)}
             placeholder={currentTenant.slug}
+            autoComplete="off"
           />
         </div>
       </Modal>

@@ -1,15 +1,14 @@
-package io.github.aryan52.tenantflow.auth.dto;
+package io.github.aryan52.tenantflow.user.dto;
 
-import jakarta.validation.constraints.Email;
+import io.github.aryan52.tenantflow.auth.dto.PasswordPolicy;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-public record RegisterRequest(
-		@NotBlank @Email @Size(max = 320) String email,
+public record ChangePasswordRequest(
+		@NotBlank String currentPassword,
 		@NotBlank @Size(min = 8, max = 72)
 		@Pattern(regexp = PasswordPolicy.REGEX, message = PasswordPolicy.MESSAGE)
-		String password,
-		@NotBlank @Size(max = 120) String name
+		String newPassword
 ) {
 }

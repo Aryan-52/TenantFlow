@@ -1,3 +1,4 @@
+import { AlertTriangle } from 'lucide-react';
 import { Modal } from './Modal';
 import { Button } from './Button';
 
@@ -29,9 +30,10 @@ export const ConfirmDialog = ({
       isOpen={isOpen}
       onClose={onCancel}
       title={title}
+      size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={onCancel} disabled={isLoading}>
+          <Button variant="secondary" onClick={onCancel} disabled={isLoading}>
             {cancelText}
           </Button>
           <Button variant={isDestructive ? 'danger' : 'primary'} onClick={onConfirm} isLoading={isLoading}>
@@ -40,7 +42,14 @@ export const ConfirmDialog = ({
         </>
       }
     >
-      <p>{message}</p>
+      <div className="flex items-start gap-3">
+        {isDestructive && (
+          <div className="modal-icon-wrap modal-icon-danger">
+            <AlertTriangle size={20} />
+          </div>
+        )}
+        <p className="text-secondary">{message}</p>
+      </div>
     </Modal>
   );
 };

@@ -9,10 +9,10 @@ interface EmptyStateProps {
 
 export const EmptyState = ({ icon, title, description, action }: EmptyStateProps) => {
   return (
-    <div className="flex flex-col items-center justify-center p-6 text-center card" style={{ minHeight: '300px' }}>
-      {icon && <div className="mb-4 text-muted">{icon}</div>}
-      <h3 className="mb-2">{title}</h3>
-      <p className="mb-6 max-w-md">{description}</p>
+    <div className="empty-state card">
+      {icon && <div className="empty-state-icon">{icon}</div>}
+      <div className="empty-state-title">{title}</div>
+      <p className="empty-state-description">{description}</p>
       {action && <div>{action}</div>}
     </div>
   );

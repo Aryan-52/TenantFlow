@@ -6,6 +6,7 @@ interface User {
   id: string;
   email: string;
   name: string;
+  createdAt?: string;
 }
 
 interface AuthContextType {
@@ -13,6 +14,8 @@ interface AuthContextType {
   loading: boolean;
   login: (token: string) => Promise<void>;
   logout: () => void;
+  /** Re-fetches the current user from the API (e.g. after a profile update elsewhere). */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -48,8 +51,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   };
 
+  const refreshUser = async (): Promise<void> => {
+    const res = await client.get('/api/users/me');
+    setUser(res.data);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

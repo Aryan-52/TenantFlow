@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, Check, X } from 'lucide-react';
+import { Check, X, User as UserIcon, Mail } from 'lucide-react';
 import client from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { PasswordInput } from '../components/ui/PasswordInput';
 import { ErrorState } from '../components/ui/ErrorState';
 
 const Register = () => {
@@ -11,8 +13,6 @@ const Register = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -25,7 +25,7 @@ const Register = () => {
     upper: false,
     lower: false,
     number: false,
-    special: false
+    special: false,
   });
 
   useEffect(() => {
@@ -34,7 +34,7 @@ const Register = () => {
       upper: /[A-Z]/.test(password),
       lower: /[a-z]/.test(password),
       number: /[0-9]/.test(password),
-      special: /[^A-Za-z0-9]/.test(password)
+      special: /[^A-Za-z0-9]/.test(password),
     });
   }, [password]);
 
@@ -68,103 +68,85 @@ const Register = () => {
   };
 
   const reqItem = (met: boolean, text: string) => (
-    <div className="flex items-center gap-1 text-sm mt-1" style={{ color: met ? 'var(--success-color)' : 'var(--text-muted)' }}>
+    <div className={`flex items-center gap-1 text-sm mt-1 ${met ? 'text-success' : 'text-muted'}`}>
       {met ? <Check size={14} /> : <X size={14} />} {text}
     </div>
   );
 
   return (
     <div className="auth-container">
-      <div className="card auth-card">
-        <div className="text-center mb-6">
-          <div style={{ width: 40, height: 40, backgroundColor: 'var(--primary-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.25rem', fontWeight: 'bold', margin: '0 auto 1rem' }}>T</div>
-          <h2>Create Account</h2>
-          <p className="text-muted">Join TenantFlow today</p>
+      <div className="card auth-card card-padded">
+        <div className="auth-brand" style={{ flexDirection: 'column' }}>
+          <span className="sidebar-brand-mark" style={{ width: 40, height: 40, fontSize: '1.25rem', marginBottom: 'var(--space-2)' }}>
+            T
+          </span>
+          <h2 className="m-0">Create account</h2>
+          <p className="text-muted text-sm m-0">Join TenantFlow today</p>
         </div>
-        
+
         <ErrorState message={error} />
-        
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Full Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              className="w-full"
-            />
-            {fieldErrors.name && <div className="text-danger text-sm mt-1">{fieldErrors.name}</div>}
-          </div>
-          <div className="form-group">
-            <label>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full"
-            />
-            {fieldErrors.email && <div className="text-danger text-sm mt-1">{fieldErrors.email}</div>}
-          </div>
-          <div className="form-group">
-            <label>Password</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full"
-                style={{ paddingRight: '2.5rem' }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+
+        <form onSubmit={handleSubmit} noValidate>
+          <Input
+            label="Full name"
+            type="text"
+            icon={<UserIcon size={15} />}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            error={fieldErrors.name}
+            required
+            autoComplete="name"
+            autoFocus
+          />
+          <Input
+            label="Email"
+            type="email"
+            icon={<Mail size={15} />}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            error={fieldErrors.email}
+            required
+            autoComplete="email"
+          />
+          <PasswordInput
+            label="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            error={fieldErrors.password}
+            required
+            autoComplete="new-password"
+          />
+          {password && (
+            <div className="mb-4 p-3 rounded-md" style={{ background: 'var(--bg-subtle)' }}>
+              {reqItem(pwdReqs.length, 'At least 8 characters')}
+              {reqItem(pwdReqs.upper, 'One uppercase letter')}
+              {reqItem(pwdReqs.lower, 'One lowercase letter')}
+              {reqItem(pwdReqs.number, 'One number')}
+              {reqItem(pwdReqs.special, 'One special character')}
             </div>
-            {password && (
-              <div className="mt-2" style={{ background: 'var(--bg-subtle)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
-                {reqItem(pwdReqs.length, 'At least 8 characters')}
-                {reqItem(pwdReqs.upper, 'One uppercase letter')}
-                {reqItem(pwdReqs.lower, 'One lowercase letter')}
-                {reqItem(pwdReqs.number, 'One number')}
-                {reqItem(pwdReqs.special, 'One special character')}
-              </div>
-            )}
-            {fieldErrors.password && <div className="text-danger text-sm mt-1">{fieldErrors.password}</div>}
-          </div>
-          <div className="form-group mb-6">
-            <label>Confirm Password</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type={showConfirmPassword ? 'text' : 'password'}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                className="w-full"
-                style={{ paddingRight: '2.5rem' }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-            {confirmPassword && password !== confirmPassword && <div className="text-danger text-sm mt-1">Passwords do not match</div>}
-            {fieldErrors.confirmPassword && <div className="text-danger text-sm mt-1">{fieldErrors.confirmPassword}</div>}
-          </div>
-          <Button type="submit" className="w-full" isLoading={loading} disabled={loading || password !== confirmPassword || !Object.values(pwdReqs).every(Boolean)}>
-            {loading ? 'Creating account...' : 'Create Account'}
+          )}
+          <PasswordInput
+            label="Confirm password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            error={confirmPassword && password !== confirmPassword ? 'Passwords do not match' : fieldErrors.confirmPassword}
+            required
+            autoComplete="new-password"
+          />
+          <Button
+            type="submit"
+            fullWidth
+            isLoading={loading}
+            disabled={loading || password !== confirmPassword || !Object.values(pwdReqs).every(Boolean)}
+          >
+            {loading ? 'Creating account...' : 'Create account'}
           </Button>
         </form>
         <p className="text-center text-muted mt-6 text-sm">
-          Already have an account? <Link to="/login" style={{ color: 'var(--primary-color)', textDecoration: 'none', fontWeight: 500 }}>Sign in</Link>
+          Already have an account?{' '}
+          <Link to="/login" style={{ color: 'var(--primary-color)', fontWeight: 500 }}>
+            Sign in
+          </Link>
         </p>
       </div>
     </div>

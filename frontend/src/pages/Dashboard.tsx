@@ -8,7 +8,9 @@ import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { EmptyState } from '../components/ui/EmptyState';
-import { FolderKanban, CheckSquare, Users, Clock } from 'lucide-react';
+import { RoleBadge } from '../components/ui/Badge';
+import { PageHeader } from '../components/ui/PageHeader';
+import { FolderKanban, CheckSquare, Users, Clock, RefreshCw, Plus } from 'lucide-react';
 
 interface DashboardData {
   totalProjects: number;
@@ -40,6 +42,7 @@ const Dashboard = () => {
     } else {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTenant?.id]);
 
   const fetchDashboard = async () => {
@@ -75,8 +78,6 @@ const Dashboard = () => {
     try {
       const res = await client.post('/api/tenants', { name: newTenantName, slug: newTenantSlug });
       const created = res.data;
-      // Use addTenant to immediately add to context without a re-fetch
-      // that would cause re-renders while modal is open
       addTenant({
         id: created.id,
         name: created.name,
@@ -84,7 +85,6 @@ const Dashboard = () => {
         myRole: created.myRole,
       });
       setShowCreate(false);
-      // Navigate to the new tenant's dashboard
       navigate(`/tenants/${created.id}/dashboard`);
     } catch (err: any) {
       if (err.response?.data?.fieldErrors && Object.keys(err.response.data.fieldErrors).length > 0) {
@@ -101,16 +101,17 @@ const Dashboard = () => {
   // Modal is rendered as a JSX expression (NOT as an inner component function)
   // to prevent React from remounting inputs on each parent state update.
   const createWorkspaceModal = (
-    <Modal isOpen={showCreate} onClose={handleCloseCreate} title="Create New Workspace">
-      <form id="create-ws-form" onSubmit={handleCreate}>
+    <Modal isOpen={showCreate} onClose={handleCloseCreate} title="Create new workspace">
+      <form id="create-ws-form" onSubmit={handleCreate} noValidate>
         <ErrorState message={createError} />
         <Input
-          label="Workspace Name"
+          label="Workspace name"
           value={newTenantName}
           onChange={(e) => setNewTenantName(e.target.value)}
           required
           placeholder="Acme Corp"
           autoComplete="off"
+          autoFocus
         />
         <Input
           label="Slug (URL identifier)"
@@ -121,13 +122,15 @@ const Dashboard = () => {
           title="Lowercase letters, numbers, and hyphens only (e.g. acme-corp)"
           placeholder="acme-corp"
           autoComplete="off"
+          hint='Lowercase letters, numbers, and hyphens only, e.g. "acme-corp".'
         />
-        <p className="text-xs text-muted">Lowercase letters, numbers, and hyphens only. E.g. "acme-corp"</p>
       </form>
-      <div className="flex justify-end gap-2 mt-4 pt-4" style={{ borderTop: '1px solid var(--border-color)' }}>
-        <Button variant="ghost" onClick={handleCloseCreate} type="button">Cancel</Button>
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" onClick={handleCloseCreate} type="button">
+          Cancel
+        </Button>
         <Button type="submit" form="create-ws-form" isLoading={createLoading} disabled={createLoading}>
-          {createLoading ? 'Creating...' : 'Create Workspace'}
+          {createLoading ? 'Creating...' : 'Create workspace'}
         </Button>
       </div>
     </Modal>
@@ -137,10 +140,14 @@ const Dashboard = () => {
     return (
       <div className="max-w-4xl mx-auto">
         <EmptyState
-          icon={<FolderKanban size={48} />}
+          icon={<FolderKanban size={28} />}
           title="Welcome to TenantFlow"
           description="You don't belong to any workspaces yet. Create one to get started and invite your team."
-          action={<Button onClick={handleOpenCreate}>Create Workspace</Button>}
+          action={
+            <Button onClick={handleOpenCreate}>
+              <Plus size={16} /> Create workspace
+            </Button>
+          }
         />
         {createWorkspaceModal}
       </div>
@@ -149,104 +156,116 @@ const Dashboard = () => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="mb-1">{currentTenant?.name || 'Dashboard'} Overview</h1>
-          <p className="text-muted">{new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={handleOpenCreate}>+ New Workspace</Button>
-          {currentTenant && (
-            <Button variant="secondary" onClick={fetchDashboard}>Refresh</Button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title={`${currentTenant?.name || 'Dashboard'} overview`}
+        subtitle={new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        actions={
+          <>
+            {currentTenant && (
+              <Button variant="secondary" onClick={fetchDashboard}>
+                <RefreshCw size={15} /> Refresh
+              </Button>
+            )}
+            <Button onClick={handleOpenCreate}>
+              <Plus size={16} /> New workspace
+            </Button>
+          </>
+        }
+      />
 
       {createWorkspaceModal}
 
       <ErrorState message={error} />
 
+      {currentTenant && (
+        <div className="flex items-center gap-2 mb-6 text-sm text-muted">
+          Your role in this workspace: <RoleBadge role={currentTenant.myRole as 'OWNER' | 'ADMIN' | 'MEMBER'} />
+        </div>
+      )}
+
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <Skeleton style={{ height: '120px' }} />
-          <Skeleton style={{ height: '120px' }} />
-          <Skeleton style={{ height: '120px' }} />
+          <Skeleton style={{ height: '100px' }} />
+          <Skeleton style={{ height: '100px' }} />
+          <Skeleton style={{ height: '100px' }} />
         </div>
       ) : data ? (
         <>
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="card flex items-center gap-4">
-              <div style={{ padding: '1rem', backgroundColor: 'var(--primary-light)', color: 'var(--primary-color)', borderRadius: 'var(--radius-lg)' }}>
-                <FolderKanban size={24} />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="stat-card">
+              <div className="stat-card-icon">
+                <FolderKanban size={20} />
               </div>
               <div>
-                <p className="text-muted text-sm font-medium">Total Projects</p>
-                <h2 className="mb-0">{data.totalProjects}</h2>
+                <div className="stat-card-value">{data.totalProjects}</div>
+                <div className="stat-card-label">Total projects</div>
               </div>
             </div>
 
-            <div className="card flex items-center gap-4">
-              <div style={{ padding: '1rem', backgroundColor: 'var(--success-bg)', color: 'var(--success-text)', borderRadius: 'var(--radius-lg)' }}>
-                <CheckSquare size={24} />
+            <div className="stat-card">
+              <div className="stat-card-icon" style={{ backgroundColor: 'var(--success-bg)', color: 'var(--success-text)' }}>
+                <CheckSquare size={20} />
               </div>
               <div>
-                <p className="text-muted text-sm font-medium">Total Tasks</p>
-                <h2 className="mb-0">{data.totalTasks}</h2>
+                <div className="stat-card-value">{data.totalTasks}</div>
+                <div className="stat-card-label">Total tasks</div>
               </div>
             </div>
 
-            <div className="card flex items-center gap-4">
-              <div style={{ padding: '1rem', backgroundColor: 'var(--warning-bg)', color: 'var(--warning-text)', borderRadius: 'var(--radius-lg)' }}>
-                <Users size={24} />
+            <div className="stat-card">
+              <div className="stat-card-icon" style={{ backgroundColor: 'var(--warning-bg)', color: 'var(--warning-text)' }}>
+                <Users size={20} />
               </div>
               <div>
-                <p className="text-muted text-sm font-medium">Team Members</p>
-                <h2 className="mb-0">{data.totalMembers}</h2>
+                <div className="stat-card-value">{data.totalMembers}</div>
+                <div className="stat-card-label">Team members</div>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
-            <div className="card">
-              <h3 className="mb-4 flex items-center gap-2"><Clock size={18} /> Task Status</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="card card-body">
+              <h3 className="mb-4 flex items-center gap-2">
+                <Clock size={18} /> Task status
+              </h3>
               <div className="flex flex-col gap-3">
-                <div className="flex justify-between items-center p-3" style={{ backgroundColor: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)' }}>
-                  <div className="flex items-center gap-2">
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: 'var(--text-muted)' }}></div>
-                    <span className="font-medium">To Do</span>
-                  </div>
+                <div className="flex justify-between items-center p-3 rounded-md" style={{ backgroundColor: 'var(--bg-subtle)' }}>
+                  <span className="flex items-center gap-2 font-medium">
+                    <span className="badge-dot" style={{ color: 'var(--text-muted)' }} />
+                    To Do
+                  </span>
                   <span className="font-semibold">{data.todoTasks}</span>
                 </div>
 
-                <div className="flex justify-between items-center p-3" style={{ backgroundColor: 'var(--primary-light)', borderRadius: 'var(--radius-md)' }}>
-                  <div className="flex items-center gap-2">
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: 'var(--primary-color)' }}></div>
-                    <span className="font-medium" style={{ color: 'var(--primary-color)' }}>In Progress</span>
-                  </div>
-                  <span className="font-semibold" style={{ color: 'var(--primary-color)' }}>{data.inProgressTasks}</span>
+                <div className="flex justify-between items-center p-3 rounded-md" style={{ backgroundColor: 'var(--primary-light)' }}>
+                  <span className="flex items-center gap-2 font-medium text-primary">
+                    <span className="badge-dot" style={{ color: 'var(--primary-color)' }} />
+                    In Progress
+                  </span>
+                  <span className="font-semibold text-primary">{data.inProgressTasks}</span>
                 </div>
 
-                <div className="flex justify-between items-center p-3" style={{ backgroundColor: 'var(--success-bg)', borderRadius: 'var(--radius-md)' }}>
-                  <div className="flex items-center gap-2">
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: 'var(--success-color)' }}></div>
-                    <span className="font-medium" style={{ color: 'var(--success-text)' }}>Done</span>
-                  </div>
-                  <span className="font-semibold" style={{ color: 'var(--success-text)' }}>{data.doneTasks}</span>
+                <div className="flex justify-between items-center p-3 rounded-md" style={{ backgroundColor: 'var(--success-bg)' }}>
+                  <span className="flex items-center gap-2 font-medium text-success">
+                    <span className="badge-dot" style={{ color: 'var(--success-color)' }} />
+                    Done
+                  </span>
+                  <span className="font-semibold text-success">{data.doneTasks}</span>
                 </div>
               </div>
             </div>
 
-            <div className="card">
-              <h3 className="mb-4">Quick Actions</h3>
+            <div className="card card-body">
+              <h3 className="mb-4">Quick actions</h3>
               <div className="flex flex-col gap-2">
                 <Link to={`/tenants/${currentTenant?.id}/projects`} className="btn btn-secondary w-full justify-start">
-                  View Projects
+                  View projects
                 </Link>
                 <Link to={`/tenants/${currentTenant?.id}/tasks`} className="btn btn-secondary w-full justify-start">
-                  Manage Tasks
+                  Manage tasks
                 </Link>
                 <Link to={`/tenants/${currentTenant?.id}/members`} className="btn btn-secondary w-full justify-start">
-                  Team Members
+                  Team members
                 </Link>
               </div>
             </div>
@@ -254,10 +273,14 @@ const Dashboard = () => {
         </>
       ) : !loading && currentTenant ? (
         <EmptyState
-          icon={<FolderKanban size={48} />}
+          icon={<FolderKanban size={28} />}
           title="No data yet"
           description="This workspace has no projects or tasks yet."
-          action={<Link to={`/tenants/${currentTenant.id}/projects`} className="btn btn-primary">Create First Project</Link>}
+          action={
+            <Link to={`/tenants/${currentTenant.id}/projects`} className="btn btn-primary">
+              Create first project
+            </Link>
+          }
         />
       ) : null}
     </div>
