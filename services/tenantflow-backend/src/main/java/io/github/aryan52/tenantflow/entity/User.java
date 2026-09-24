@@ -60,6 +60,19 @@ public class User {
 	@Column(name = "updated_at", nullable = false, columnDefinition = "timestamp with time zone")
 	private Instant updatedAt;
 
+	/** Bumped whenever the user's password changes (profile change or reset). Embedded in
+	 * every JWT at issuance; a token whose embedded version no longer matches this value is
+	 * rejected, giving us "sign out everywhere" without a server-side token blacklist. */
+	@Column(name = "token_version", nullable = false)
+	@Builder.Default
+	private int tokenVersion = 0;
+
+	/** LOCAL (email/password) or GOOGLE. OAuth-created accounts get an unusable random
+	 * password hash at creation and can set a real one later via password reset. */
+	@Column(name = "auth_provider", nullable = false, length = 32)
+	@Builder.Default
+	private String authProvider = "LOCAL";
+
 	@PrePersist
 	void onCreate() {
 		Instant now = Instant.now();

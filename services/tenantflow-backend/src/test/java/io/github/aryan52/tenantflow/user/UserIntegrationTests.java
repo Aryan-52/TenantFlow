@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.aryan52.tenantflow.auth.dto.AuthResponse;
 import io.github.aryan52.tenantflow.entity.User;
 import io.github.aryan52.tenantflow.repository.UserRepository;
 import io.github.aryan52.tenantflow.security.JwtService;
@@ -120,30 +121,68 @@ class UserIntegrationTests {
 	}
 
 	@Test
-	void changesPasswordSuccessfully() throws Exception {
+	void changesPasswordSuccessfullyAndReturnsAFreshWorkingToken() throws Exception {
 		ChangePasswordRequest request = new ChangePasswordRequest("Password123!", "NewPassword456!");
 
-		mockMvc.perform(put("/api/users/me/password")
+		String body = mockMvc.perform(put("/api/users/me/password")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(objectMapper.writeValueAsString(request)))
-				.andExpect(status().isNoContent());
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.token").isNotEmpty())
+				.andExpect(jsonPath("$.email").value("me@example.com"))
+				.andReturn().getResponse().getContentAsString();
 
 		User reloaded = userRepository.findById(user.getId()).orElseThrow();
 		assertThat(passwordEncoder.matches("NewPassword456!", reloaded.getPasswordHash())).isTrue();
 		assertThat(passwordEncoder.matches("Password123!", reloaded.getPasswordHash())).isFalse();
+
+		// The old token (used to make this very request) must now be invalid everywhere
+		// else - but the fresh token in the response must work immediately, so the
+		// requesting session is never actually logged out.
+		mockMvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+				.andExpect(status().isUnauthorized());
+
+		String newToken = objectMapper.readValue(body, AuthResponse.class).token();
+		mockMvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + newToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.email").value("me@example.com"));
 	}
 
 	@Test
-	void rejectsPasswordChangeWithWrongCurrentPassword() throws Exception {
+	void rejectsPasswordChangeWithWrongCurrentPasswordAndKeepsTheOldTokenValid() throws Exception {
 		ChangePasswordRequest request = new ChangePasswordRequest("WrongPassword123!", "NewPassword456!");
+
+		// 400, not 401: the caller's session/JWT is fine, only the submitted current
+		// password was wrong. A 401 here would make the frontend's global session
+		// handling think the session itself was invalid and log the user out.
+		mockMvc.perform(put("/api/users/me/password")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(request)))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.currentPassword").value("Current password is incorrect"));
+
+		// The existing session must still work - nothing was invalidated by the failed attempt.
+		mockMvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+				.andExpect(status().isOk());
+	}
+
+	@Test
+	void rejectsPasswordChangeWhenNewPasswordEqualsCurrentPassword() throws Exception {
+		ChangePasswordRequest request = new ChangePasswordRequest("Password123!", "Password123!");
 
 		mockMvc.perform(put("/api/users/me/password")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(objectMapper.writeValueAsString(request)))
-				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Current password is incorrect"));
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.newPassword")
+						.value("New password must be different from your current password."));
+
+		// Nothing changed, session still valid.
+		mockMvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+				.andExpect(status().isOk());
 	}
 
 	@Test

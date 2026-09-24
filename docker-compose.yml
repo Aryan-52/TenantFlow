@@ -37,6 +37,19 @@ services:
       # proxy below). Not needed for the frontend service itself, which talks to the
       # backend same-origin via nginx, but kept configurable for direct API access.
       - TENANTFLOW_CORS_ALLOWED_ORIGINS=http://localhost:3000
+      - TENANTFLOW_REFRESH_TOKEN_EXPIRATION_DAYS=30
+      - TENANTFLOW_PASSWORD_RESET_EXPIRATION_MINUTES=30
+      - TENANTFLOW_PASSWORD_RESET_URL=http://localhost:3000/reset-password?token={token}
+      # false because this bundled stack is served over plain HTTP on localhost - a
+      # Secure cookie would never be sent back by the browser. Any real deployment
+      # behind HTTPS must set this to true (the default when the env var is unset).
+      - TENANTFLOW_COOKIE_SECURE=false
+      - TENANTFLOW_COOKIE_SAME_SITE=Lax
+      - TENANTFLOW_OAUTH_FRONTEND_REDIRECT_URI=http://localhost:3000/oauth-callback
+      # Optional: set these on the host (or in a .env file next to this compose file)
+      # to enable "Continue with Google". Left blank, Google OAuth stays disabled.
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import client from '../api/client';
+import client, { refreshAccessToken } from '../api/client';
 
 interface User {
   id: string;
@@ -13,7 +13,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (token: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   /** Re-fetches the current user from the API (e.g. after a profile update elsewhere). */
   refreshUser: () => Promise<void>;
 }
@@ -26,12 +26,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('token');
+      let token = localStorage.getItem('token');
+
+      // No local access token - this browser might still have a valid "remember me"
+      // HttpOnly refresh cookie (e.g. localStorage was cleared but cookies weren't).
+      // Try a silent refresh before concluding the user is logged out.
+      if (!token) {
+        token = await refreshAccessToken();
+      }
+
       if (token) {
         try {
           const res = await client.get('/api/users/me');
           setUser(res.data);
-        } catch (err) {
+        } catch {
           localStorage.removeItem('token');
         }
       }
@@ -46,9 +54,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(res.data);
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
+  const logout = async (): Promise<void> => {
+    try {
+      // Best-effort: revokes the "remember me" refresh token server-side and clears its
+      // cookie. Local logout must still succeed even if this call fails (e.g. offline).
+      await client.post('/api/auth/logout');
+    } catch {
+      // Ignore - the user is being logged out locally regardless.
+    } finally {
+      localStorage.removeItem('token');
+      setUser(null);
+    }
   };
 
   const refreshUser = async (): Promise<void> => {

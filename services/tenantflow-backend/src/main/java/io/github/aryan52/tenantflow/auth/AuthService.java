@@ -4,6 +4,7 @@ import io.github.aryan52.tenantflow.auth.dto.AuthResponse;
 import io.github.aryan52.tenantflow.auth.dto.LoginRequest;
 import io.github.aryan52.tenantflow.auth.dto.RegisterRequest;
 import io.github.aryan52.tenantflow.entity.User;
+import io.github.aryan52.tenantflow.refreshtoken.RefreshTokenService;
 import io.github.aryan52.tenantflow.repository.UserRepository;
 import io.github.aryan52.tenantflow.security.JwtService;
 import java.util.Locale;
@@ -20,6 +21,12 @@ public class AuthService {
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtService jwtService;
+	private final RefreshTokenService refreshTokenService;
+
+	/** @param refreshToken the raw "remember me" refresh token to set as an HttpOnly
+	 * cookie, or null when the login did not request a persistent session. */
+	public record LoginResult(AuthResponse response, String refreshToken) {
+	}
 
 	@Transactional
 	public AuthResponse register(RegisterRequest request) {
@@ -48,8 +55,8 @@ public class AuthService {
 		}
 	}
 
-	@Transactional(readOnly = true)
-	public AuthResponse login(LoginRequest request) {
+	@Transactional
+	public LoginResult login(LoginRequest request) {
 		User user = userRepository.findByEmail(normalizeEmail(request.email()))
 				.orElseThrow(InvalidCredentialsException::new);
 
@@ -57,13 +64,16 @@ public class AuthService {
 			throw new InvalidCredentialsException();
 		}
 
-		return AuthResponse.bearer(
+		AuthResponse response = AuthResponse.bearer(
 				jwtService.generateToken(user),
 				jwtService.getExpirationSeconds(),
 				user.getId(),
 				user.getEmail(),
 				user.getName()
 		);
+
+		String refreshToken = request.rememberMe() ? refreshTokenService.issue(user) : null;
+		return new LoginResult(response, refreshToken);
 	}
 
 	private String normalizeEmail(String email) {

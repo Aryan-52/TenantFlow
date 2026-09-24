@@ -113,7 +113,7 @@ class AuthIntegrationTests {
 				.passwordHash(passwordEncoder.encode("Password123!"))
 				.name("Login User")
 				.build());
-		LoginRequest request = new LoginRequest("login@example.com", "Password123!");
+		LoginRequest request = new LoginRequest("login@example.com", "Password123!", false);
 
 		mockMvc.perform(post("/api/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)
@@ -133,7 +133,7 @@ class AuthIntegrationTests {
 				.passwordHash(passwordEncoder.encode("Password123!"))
 				.name("Wrong Password")
 				.build());
-		LoginRequest request = new LoginRequest("wrong-password@example.com", "WrongPassword123!");
+		LoginRequest request = new LoginRequest("wrong-password@example.com", "WrongPassword123!", false);
 
 		mockMvc.perform(post("/api/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)
@@ -160,7 +160,7 @@ class AuthIntegrationTests {
 
 	@Test
 	void rejectsInvalidLoginRequest() throws Exception {
-		LoginRequest request = new LoginRequest("invalid-email", "");
+		LoginRequest request = new LoginRequest("invalid-email", "", false);
 
 		mockMvc.perform(post("/api/auth/login")
 						.contentType(MediaType.APPLICATION_JSON)

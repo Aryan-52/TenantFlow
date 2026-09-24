@@ -1,8 +1,11 @@
 package io.github.aryan52.tenantflow.user;
 
+import io.github.aryan52.tenantflow.auth.dto.AuthResponse;
 import io.github.aryan52.tenantflow.entity.User;
 import io.github.aryan52.tenantflow.error.ResourceNotFoundException;
+import io.github.aryan52.tenantflow.refreshtoken.RefreshTokenService;
 import io.github.aryan52.tenantflow.repository.UserRepository;
+import io.github.aryan52.tenantflow.security.JwtService;
 import io.github.aryan52.tenantflow.user.dto.ChangePasswordRequest;
 import io.github.aryan52.tenantflow.user.dto.UpdateProfileRequest;
 import io.github.aryan52.tenantflow.user.dto.UserProfileResponse;
@@ -18,6 +21,8 @@ public class UserService {
 
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
+	private final JwtService jwtService;
+	private final RefreshTokenService refreshTokenService;
 
 	@Transactional(readOnly = true)
 	public UserProfileResponse getProfile(UUID userId) {
@@ -31,16 +36,41 @@ public class UserService {
 		return UserProfileResponse.from(userRepository.save(user));
 	}
 
+	/**
+	 * Changes the current user's password and returns a freshly-issued access token.
+	 *
+	 * This bumps the user's token_version, which invalidates every access token issued
+	 * before this call - including, in principle, the one used to call this endpoint. The
+	 * caller (the same browser tab that just submitted the form) must keep working though,
+	 * so we hand back a brand new token generated *after* the version bump, which the
+	 * frontend swaps in immediately. Every other device/tab is signed out on its next
+	 * request, and any "remember me" persistent sessions are revoked outright.
+	 */
 	@Transactional
-	public void changePassword(UUID userId, ChangePasswordRequest request) {
+	public AuthResponse changePassword(UUID userId, ChangePasswordRequest request) {
 		User user = findUser(userId);
 
 		if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
 			throw new InvalidCurrentPasswordException();
 		}
 
+		if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+			throw new PasswordUnchangedException();
+		}
+
 		user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
-		userRepository.save(user);
+		user.setTokenVersion(user.getTokenVersion() + 1);
+		User saved = userRepository.save(user);
+
+		refreshTokenService.revokeAllForUser(saved.getId());
+
+		return AuthResponse.bearer(
+				jwtService.generateToken(saved),
+				jwtService.getExpirationSeconds(),
+				saved.getId(),
+				saved.getEmail(),
+				saved.getName()
+		);
 	}
 
 	private User findUser(UUID userId) {

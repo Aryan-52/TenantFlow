@@ -2,7 +2,10 @@ package io.github.aryan52.tenantflow.error;
 
 import io.github.aryan52.tenantflow.auth.DuplicateEmailException;
 import io.github.aryan52.tenantflow.auth.InvalidCredentialsException;
+import io.github.aryan52.tenantflow.passwordreset.InvalidOrExpiredResetTokenException;
+import io.github.aryan52.tenantflow.refreshtoken.InvalidRefreshTokenException;
 import io.github.aryan52.tenantflow.user.InvalidCurrentPasswordException;
+import io.github.aryan52.tenantflow.user.PasswordUnchangedException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
 import java.util.TreeMap;
@@ -42,6 +45,34 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(InvalidCurrentPasswordException.class)
 	public ResponseEntity<ApiErrorResponse> handleInvalidCurrentPassword(
 			InvalidCurrentPasswordException ex,
+			HttpServletRequest request
+	) {
+		// 400, not 401: the caller's JWT/session is perfectly valid here - only the
+		// submitted current-password value was wrong. Returning 401 would make the
+		// frontend's global "session expired" handling log the user out, which is
+		// exactly what this endpoint must never do.
+		return fieldError(HttpStatus.BAD_REQUEST, ex.getMessage(), "currentPassword", request);
+	}
+
+	@ExceptionHandler(PasswordUnchangedException.class)
+	public ResponseEntity<ApiErrorResponse> handlePasswordUnchanged(
+			PasswordUnchangedException ex,
+			HttpServletRequest request
+	) {
+		return fieldError(HttpStatus.BAD_REQUEST, ex.getMessage(), "newPassword", request);
+	}
+
+	@ExceptionHandler(InvalidOrExpiredResetTokenException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidResetToken(
+			InvalidOrExpiredResetTokenException ex,
+			HttpServletRequest request
+	) {
+		return error(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+	}
+
+	@ExceptionHandler(InvalidRefreshTokenException.class)
+	public ResponseEntity<ApiErrorResponse> handleInvalidRefreshToken(
+			InvalidRefreshTokenException ex,
 			HttpServletRequest request
 	) {
 		return error(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
@@ -147,5 +178,11 @@ public class GlobalExceptionHandler {
 		return ResponseEntity
 				.status(status)
 				.body(ApiErrorResponse.of(status, message, request.getRequestURI()));
+	}
+
+	private ResponseEntity<ApiErrorResponse> fieldError(HttpStatus status, String message, String field, HttpServletRequest request) {
+		return ResponseEntity
+				.status(status)
+				.body(ApiErrorResponse.of(status, message, request.getRequestURI(), Map.of(field, message)));
 	}
 }

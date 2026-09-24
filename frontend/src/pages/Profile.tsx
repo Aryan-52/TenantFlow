@@ -11,7 +11,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Mail, Hash, Calendar } from 'lucide-react';
 
 const Profile = () => {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, login } = useAuth();
 
   const [name, setName] = useState(user?.name || '');
   const [nameError, setNameError] = useState('');
@@ -22,6 +22,8 @@ const Profile = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [currentPasswordError, setCurrentPasswordError] = useState('');
+  const [newPasswordError, setNewPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
 
@@ -44,9 +46,15 @@ const Profile = () => {
     }
   };
 
+  const clearPasswordErrors = () => {
+    setPasswordError('');
+    setCurrentPasswordError('');
+    setNewPasswordError('');
+  };
+
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setPasswordError('');
+    clearPasswordErrors();
     setPasswordSuccess('');
 
     if (newPassword !== confirmPassword) {
@@ -56,14 +64,27 @@ const Profile = () => {
 
     setPasswordLoading(true);
     try {
-      await client.put('/api/users/me/password', { currentPassword, newPassword });
-      setPasswordSuccess('Password changed successfully.');
+      // The backend returns a freshly-issued access token here (it bumps the account's
+      // token_version to sign out every other session), so this tab must swap it in
+      // immediately via login() rather than just showing a success message - otherwise
+      // this session would itself go stale on its very next request.
+      const res = await client.put('/api/users/me/password', { currentPassword, newPassword });
+      await login(res.data.token);
+
+      setPasswordSuccess('Password changed successfully. You remain signed in.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setTimeout(() => setPasswordSuccess(''), 3000);
+      setTimeout(() => setPasswordSuccess(''), 4000);
     } catch (err: any) {
-      setPasswordError(err.response?.data?.message || 'Failed to change password');
+      const fieldErrors = err.response?.data?.fieldErrors;
+      if (fieldErrors?.currentPassword) {
+        setCurrentPasswordError(fieldErrors.currentPassword);
+      } else if (fieldErrors?.newPassword) {
+        setNewPasswordError(fieldErrors.newPassword);
+      } else {
+        setPasswordError(err.response?.data?.message || 'Failed to change password');
+      }
     } finally {
       setPasswordLoading(false);
     }
@@ -137,17 +158,25 @@ const Profile = () => {
             <PasswordInput
               label="Current password"
               value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
+              onChange={(e) => {
+                setCurrentPassword(e.target.value);
+                if (currentPasswordError) setCurrentPasswordError('');
+              }}
+              error={currentPasswordError}
               required
               autoComplete="current-password"
             />
             <PasswordInput
               label="New password"
               value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
+              onChange={(e) => {
+                setNewPassword(e.target.value);
+                if (newPasswordError) setNewPasswordError('');
+              }}
+              error={newPasswordError}
               required
               autoComplete="new-password"
-              hint="At least 8 characters, with an uppercase letter, lowercase letter, number, and special character."
+              hint={newPasswordError ? undefined : 'At least 8 characters, with an uppercase letter, lowercase letter, number, and special character.'}
             />
             <PasswordInput
               label="Confirm new password"

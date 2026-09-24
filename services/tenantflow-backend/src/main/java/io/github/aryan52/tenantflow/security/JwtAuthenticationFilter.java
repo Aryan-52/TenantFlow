@@ -35,6 +35,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				&& SecurityContextHolder.getContext().getAuthentication() == null
 				&& jwtService.isTokenValid(token)) {
 			userRepository.findById(jwtService.extractUserId(token))
+					.filter(user -> user.getTokenVersion() == jwtService.extractTokenVersion(token))
 					.map(AuthenticatedUser::from)
 					.ifPresent(principal -> {
 						UsernamePasswordAuthenticationToken authentication =

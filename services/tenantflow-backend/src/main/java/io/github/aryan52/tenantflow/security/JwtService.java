@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 public class JwtService {
 
 	private static final String EMAIL_CLAIM = "email";
+	private static final String VERSION_CLAIM = "ver";
 
 	private final JwtProperties jwtProperties;
 
@@ -29,6 +30,7 @@ public class JwtService {
 		return Jwts.builder()
 				.subject(user.getId().toString())
 				.claim(EMAIL_CLAIM, user.getEmail())
+				.claim(VERSION_CLAIM, user.getTokenVersion())
 				.issuedAt(Date.from(now))
 				.expiration(Date.from(expiresAt))
 				.signWith(signingKey(), Jwts.SIG.HS256)
@@ -51,6 +53,15 @@ public class JwtService {
 
 	public String extractEmail(String token) {
 		return extractAllClaims(token).get(EMAIL_CLAIM, String.class);
+	}
+
+	/** The token_version the user had at the moment this JWT was issued. A missing claim
+	 * (tokens issued before this field existed) is treated as version 0, matching the
+	 * default value new/existing users start at - so upgrading never invalidates
+	 * already-issued tokens by itself. */
+	public int extractTokenVersion(String token) {
+		Integer version = extractAllClaims(token).get(VERSION_CLAIM, Integer.class);
+		return version != null ? version : 0;
 	}
 
 	public long getExpirationSeconds() {

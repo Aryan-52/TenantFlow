@@ -1,5 +1,9 @@
 package io.github.aryan52.tenantflow.config;
 
+import io.github.aryan52.tenantflow.oauth.GoogleClientRegistrationFactory;
+import io.github.aryan52.tenantflow.oauth.GoogleUserProvisioningService;
+import io.github.aryan52.tenantflow.oauth.OAuth2LoginFailureHandler;
+import io.github.aryan52.tenantflow.oauth.OAuth2LoginSuccessHandler;
 import io.github.aryan52.tenantflow.security.JwtAuthenticationFilter;
 import io.github.aryan52.tenantflow.security.RestAccessDeniedHandler;
 import io.github.aryan52.tenantflow.security.RestAuthenticationEntryPoint;
@@ -21,17 +25,22 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 @Configuration
 @EnableMethodSecurity
 @RequiredArgsConstructor
-@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class})
+@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class, RefreshTokenProperties.class,
+		PasswordResetProperties.class, CookieProperties.class, GoogleOAuthProperties.class})
 public class SecurityConfig {
 
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 	private final RestAuthenticationEntryPoint authenticationEntryPoint;
 	private final RestAccessDeniedHandler accessDeniedHandler;
 	private final CorsProperties corsProperties;
+	private final GoogleOAuthProperties googleOAuthProperties;
+	private final GoogleUserProvisioningService googleUserProvisioningService;
+	private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
+	private final OAuth2LoginFailureHandler oAuth2LoginFailureHandler;
 
 	@Bean
 	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-		return http
+		http
 				.cors(cors -> cors.configurationSource(corsConfigurationSource()))
 				.csrf(AbstractHttpConfigurer::disable)
 				.httpBasic(AbstractHttpConfigurer::disable)
@@ -44,12 +53,28 @@ public class SecurityConfig {
 				)
 				.authorizeHttpRequests(authorize -> authorize
 						.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-						.requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+						.requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login",
+								"/api/auth/refresh", "/api/auth/logout",
+								"/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
 						.requestMatchers("/api/**").authenticated()
 						.anyRequest().permitAll()
 				)
-				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-				.build();
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+		// Only registered when both GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are
+		// configured. When they are not, .oauth2Login(...) is never added to the filter chain
+		// at all, so /oauth2/authorization/google simply doesn't exist (404) rather than the
+		// application failing to start or presenting a broken/fake login button.
+		if (googleOAuthProperties.isConfigured()) {
+			http.oauth2Login(oauth2 -> oauth2
+					.clientRegistrationRepository(GoogleClientRegistrationFactory.build(googleOAuthProperties))
+					.userInfoEndpoint(userInfo -> userInfo.oidcUserService(googleUserProvisioningService))
+					.successHandler(oAuth2LoginSuccessHandler)
+					.failureHandler(oAuth2LoginFailureHandler)
+			);
+		}
+
+		return http.build();
 	}
 
 	@Bean
