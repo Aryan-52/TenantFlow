@@ -57,6 +57,12 @@ client.interceptors.response.use(
     const isAuthRequest = requestUrl.includes('/api/auth/');
     const alreadyRetried = !!error.config?._retriedAfterRefresh;
 
+    // Only a genuine 401 ever lands here - business-rule failures on an already
+    // authenticated request (wrong current password, new password === current, weak
+    // password) are 400s from the backend by design (see GlobalExceptionHandler) and
+    // never reach this block at all, regardless of which endpoint they came from. A
+    // real 401 means the access token itself is invalid/expired, which is exactly the
+    // case a silent refresh-and-retry should handle before giving up.
     if (error.response && error.response.status === 401 && !isAuthRequest && !alreadyRetried) {
       const newToken = await refreshAccessToken();
       if (newToken) {

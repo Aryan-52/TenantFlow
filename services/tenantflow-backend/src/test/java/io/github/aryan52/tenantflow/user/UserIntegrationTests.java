@@ -2,12 +2,14 @@ package io.github.aryan52.tenantflow.user;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.aryan52.tenantflow.auth.dto.AuthResponse;
+import io.github.aryan52.tenantflow.auth.dto.LoginRequest;
 import io.github.aryan52.tenantflow.entity.User;
 import io.github.aryan52.tenantflow.repository.UserRepository;
 import io.github.aryan52.tenantflow.security.JwtService;
@@ -195,5 +197,34 @@ class UserIntegrationTests {
 						.content(objectMapper.writeValueAsString(request)))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.fieldErrors.newPassword").exists());
+	}
+
+	/**
+	 * End-to-end proof, through the real /api/auth/login endpoint rather than just
+	 * checking the encoded hash directly: after a successful change, the OLD password
+	 * can no longer log in and the NEW one can.
+	 */
+	@Test
+	void oldPasswordStopsWorkingAndNewPasswordWorksOnNextLogin() throws Exception {
+		ChangePasswordRequest changeRequest = new ChangePasswordRequest("Password123!", "BrandNewPassword789!");
+
+		mockMvc.perform(put("/api/users/me/password")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(changeRequest)))
+				.andExpect(status().isOk());
+
+		LoginRequest oldLogin = new LoginRequest("me@example.com", "Password123!", false);
+		mockMvc.perform(post("/api/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(oldLogin)))
+				.andExpect(status().isUnauthorized());
+
+		LoginRequest newLogin = new LoginRequest("me@example.com", "BrandNewPassword789!", false);
+		mockMvc.perform(post("/api/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(newLogin)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.token").isNotEmpty());
 	}
 }
