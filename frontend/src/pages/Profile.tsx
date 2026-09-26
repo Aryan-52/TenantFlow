@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import client from '../api/client';
 import { Button } from '../components/ui/Button';
@@ -166,6 +167,13 @@ const Profile = () => {
               required
               autoComplete="current-password"
             />
+            {currentPasswordError && (
+              <p className="text-sm mb-4" style={{ marginTop: '-0.75rem' }}>
+                <Link to="/forgot-password" style={{ color: 'var(--primary-color)', fontWeight: 500 }}>
+                  Forgot password?
+                </Link>
+              </p>
+            )}
             <PasswordInput
               label="New password"
               value={newPassword}

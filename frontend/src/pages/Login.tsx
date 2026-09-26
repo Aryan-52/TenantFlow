@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Mail } from 'lucide-react';
 import client from '../api/client';
@@ -34,6 +34,25 @@ const Login = () => {
   const { login } = useAuth();
   const [searchParams] = useSearchParams();
   const oauthFailed = searchParams.get('error') === 'oauth_failed';
+
+  // Never link straight to /oauth2/authorization/google without first checking it's
+  // actually usable - hitting it with no Google credentials configured is exactly the
+  // broken experience this avoids. null = "still checking" (button shown disabled).
+  const [googleAvailable, setGoogleAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    client
+      .get('/api/auth/oauth-providers')
+      .then((res) => {
+        if (!cancelled) setGoogleAvailable(!!res.data.google);
+      })
+      .catch(() => {
+        if (!cancelled) setGoogleAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,9 +131,25 @@ const Login = () => {
 
         <div className="divider-with-text">or</div>
 
-        <a href={`${API_BASE}/oauth2/authorization/google`} className="btn btn-secondary w-full justify-center">
-          <GoogleIcon /> Continue with Google
-        </a>
+        {googleAvailable ? (
+          <a href={`${API_BASE}/oauth2/authorization/google`} className="btn btn-secondary w-full justify-center">
+            <GoogleIcon /> Continue with Google
+          </a>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn btn-secondary w-full justify-center"
+              disabled
+              title="Google sign-in is not configured."
+            >
+              <GoogleIcon /> Continue with Google
+            </button>
+            {googleAvailable === false && (
+              <p className="text-center text-muted text-xs mt-2">Google sign-in is not configured.</p>
+            )}
+          </>
+        )}
 
         <p className="text-center text-muted mt-6 text-sm">
           Don't have an account?{' '}

@@ -3,6 +3,7 @@ package io.github.aryan52.tenantflow.auth;
 import io.github.aryan52.tenantflow.auth.dto.AuthResponse;
 import io.github.aryan52.tenantflow.auth.dto.LoginRequest;
 import io.github.aryan52.tenantflow.auth.dto.RegisterRequest;
+import io.github.aryan52.tenantflow.config.GoogleOAuthProperties;
 import io.github.aryan52.tenantflow.entity.User;
 import io.github.aryan52.tenantflow.refreshtoken.InvalidRefreshTokenException;
 import io.github.aryan52.tenantflow.refreshtoken.RefreshCookieUtil;
@@ -15,6 +16,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,6 +31,19 @@ public class AuthController {
 	private final RefreshTokenService refreshTokenService;
 	private final RefreshCookieUtil refreshCookieUtil;
 	private final JwtService jwtService;
+	private final GoogleOAuthProperties googleOAuthProperties;
+
+	public record OAuthProvidersResponse(boolean google) {
+	}
+
+	/** Lets the Login page know whether "Continue with Google" is actually usable, so it
+	 * can show it disabled (with an explanation) instead of ever linking the user to
+	 * /oauth2/authorization/google when no credentials are configured. Public - the
+	 * whole point is to be callable from the (unauthenticated) login page. */
+	@GetMapping("/oauth-providers")
+	public OAuthProvidersResponse oauthProviders() {
+		return new OAuthProvidersResponse(googleOAuthProperties.isConfigured());
+	}
 
 	@PostMapping("/register")
 	public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {

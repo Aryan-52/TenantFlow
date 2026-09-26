@@ -56,6 +56,7 @@ public class SecurityConfig {
 						.requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login",
 								"/api/auth/refresh", "/api/auth/logout",
 								"/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/auth/oauth-providers", "/oauth2/authorization/google", "/api/version").permitAll()
 						.requestMatchers("/api/**").authenticated()
 						.anyRequest().permitAll()
 				)

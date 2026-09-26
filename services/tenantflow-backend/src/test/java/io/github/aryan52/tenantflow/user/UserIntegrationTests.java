@@ -227,4 +227,82 @@ class UserIntegrationTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.token").isNotEmpty());
 	}
+
+	/**
+	 * The exact three-step invariant: a wrong current password must leave the stored
+	 * hash byte-for-byte unchanged (not just "still validates the old password" - the
+	 * literal database value must not move at all), same for current==new, and only the
+	 * third, fully-valid attempt may change it - after which the old password is dead
+	 * and the new one works, through the real login endpoint.
+	 */
+	@Test
+	void passwordHashOnlyChangesWhenEveryValidationPasses() throws Exception {
+		userRepository.deleteAll();
+		User subject = userRepository.save(User.builder()
+				.email("hash-invariant@example.com")
+				.name("Hash Invariant")
+				.passwordHash(passwordEncoder.encode("CorrectCurrentPassword"))
+				.build());
+		String subjectToken = jwtService.generateToken(subject);
+		String hashBeforeAnyAttempt = userRepository.findById(subject.getId()).orElseThrow().getPasswordHash();
+
+		// Step 1: wrong current password.
+		ChangePasswordRequest wrongCurrent = new ChangePasswordRequest("WrongCurrentPassword", "NewPassword123!");
+		mockMvc.perform(put("/api/users/me/password")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + subjectToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(wrongCurrent)))
+				.andExpect(status().isBadRequest());
+
+		String hashAfterWrongCurrent = userRepository.findById(subject.getId()).orElseThrow().getPasswordHash();
+		assertThat(hashAfterWrongCurrent).isEqualTo(hashBeforeAnyAttempt);
+
+		// The new password must NOT authenticate (it was never applied), and the old one
+		// still must, and the session used to make the failed attempt is still valid.
+		mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(new LoginRequest("hash-invariant@example.com", "NewPassword123!", false))))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(new LoginRequest("hash-invariant@example.com", "CorrectCurrentPassword", false))))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + subjectToken))
+				.andExpect(status().isOk());
+
+		// Step 2: current password correct, but new === current.
+		ChangePasswordRequest samePassword = new ChangePasswordRequest("CorrectCurrentPassword", "CorrectCurrentPassword");
+		mockMvc.perform(put("/api/users/me/password")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + subjectToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(samePassword)))
+				.andExpect(status().isBadRequest());
+
+		String hashAfterSamePassword = userRepository.findById(subject.getId()).orElseThrow().getPasswordHash();
+		assertThat(hashAfterSamePassword).isEqualTo(hashBeforeAnyAttempt);
+		mockMvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + subjectToken))
+				.andExpect(status().isOk());
+
+		// Step 3: correct current password, genuinely different new password - only now
+		// may the hash actually change.
+		ChangePasswordRequest validChange = new ChangePasswordRequest("CorrectCurrentPassword", "NewPassword123!");
+		String responseBody = mockMvc.perform(put("/api/users/me/password")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + subjectToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(validChange)))
+				.andExpect(status().isOk())
+				.andReturn().getResponse().getContentAsString();
+
+		String hashAfterValidChange = userRepository.findById(subject.getId()).orElseThrow().getPasswordHash();
+		assertThat(hashAfterValidChange).isNotEqualTo(hashBeforeAnyAttempt);
+
+		mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(new LoginRequest("hash-invariant@example.com", "CorrectCurrentPassword", false))))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(new LoginRequest("hash-invariant@example.com", "NewPassword123!", false))))
+				.andExpect(status().isOk());
+
+		String freshToken = objectMapper.readValue(responseBody, AuthResponse.class).token();
+		mockMvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + freshToken))
+				.andExpect(status().isOk());
+	}
 }
