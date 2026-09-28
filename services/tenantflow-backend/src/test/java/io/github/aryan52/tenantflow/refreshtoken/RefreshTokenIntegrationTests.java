@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.aryan52.tenantflow.auth.dto.LoginRequest;
 import io.github.aryan52.tenantflow.entity.User;
+import io.github.aryan52.tenantflow.repository.RefreshTokenRepository;
 import io.github.aryan52.tenantflow.repository.UserRepository;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
