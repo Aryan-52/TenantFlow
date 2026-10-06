@@ -8,8 +8,10 @@ import io.github.aryan52.tenantflow.repository.UserRepository;
 import io.github.aryan52.tenantflow.security.SecureTokens;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -28,6 +30,7 @@ public class RefreshTokenService {
 	private final RefreshTokenRepository refreshTokenRepository;
 	private final UserRepository userRepository;
 	private final RefreshTokenProperties refreshTokenProperties;
+	private final RefreshTokenRevocationHelper revocationHelper;
 
 	public record RotationResult(User user, String rawToken) {
 	}
@@ -53,7 +56,11 @@ public class RefreshTokenService {
 			// A revoked token being presented again means it was copied/stolen before (or
 			// after) rotation. Kill the whole session family for this user rather than just
 			// this one token.
-			revokeAllForUser(existing.getUserId());
+			//
+			// Delegating to revocationHelper ensures REQUIRES_NEW executes in a separate
+			// transaction that commits independently, rather than being rolled back when
+			// rotate() throws InvalidRefreshTokenException.
+			revocationHelper.revokeAllForUser(existing.getUserId());
 			throw new InvalidRefreshTokenException();
 		}
 
@@ -82,12 +89,12 @@ public class RefreshTokenService {
 	}
 
 	/** Revokes every active persistent session for a user - called on password change/reset
-	 * so a compromised or old device's "remember me" session stops working immediately. */
-	@Transactional
-	public void revokeAllForUser(java.util.UUID userId) {
-		List<RefreshToken> active = refreshTokenRepository.findByUserIdAndRevokedAtIsNull(userId);
-		Instant now = Instant.now();
-		active.forEach(t -> t.setRevokedAt(now));
-		refreshTokenRepository.saveAll(active);
+	 * so a compromised or old device's "remember me" session stops working immediately.
+	 *
+	 * <p>Delegates to {@link RefreshTokenRevocationHelper} which executes in its own
+	 * {@link Propagation#REQUIRES_NEW} transaction boundary, ensuring commits are not
+	 * rolled back even if called during reuse-detection in {@link #rotate}. */
+	public void revokeAllForUser(UUID userId) {
+		revocationHelper.revokeAllForUser(userId);
 	}
 }

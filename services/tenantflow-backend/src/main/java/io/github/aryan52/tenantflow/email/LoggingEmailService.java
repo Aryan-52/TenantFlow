@@ -2,17 +2,17 @@ package io.github.aryan52.tenantflow.email;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.stereotype.Service;
 
 /**
  * Default EmailService: logs the message instead of sending it. This is a deliberate
- * placeholder - no real email provider is wired up yet. Define a @Bean implementing
- * EmailService (e.g. backed by Resend/Brevo/SES) to replace this in any environment
- * that needs real delivery; it will automatically take priority over this one.
+ * placeholder - no real email provider is wired up yet. Expose a @Bean implementing
+ * EmailService (e.g. backed by Resend/Brevo/SES) to replace this - it will automatically
+ * take priority because EmailConfig registers this one with @ConditionalOnMissingBean.
+ *
+ * <p>Note: intentionally NOT annotated with @Service. Bean registration is handled by
+ * {@link io.github.aryan52.tenantflow.config.EmailConfig}, because @ConditionalOnMissingBean
+ * only works correctly inside a @Configuration @Bean method - not on component-scanned beans.
  */
-@Service
-@ConditionalOnMissingBean(EmailService.class)
 public class LoggingEmailService implements EmailService {
 
 	private static final Logger log = LoggerFactory.getLogger(LoggingEmailService.class);

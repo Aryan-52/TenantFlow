@@ -31,12 +31,18 @@ public class OAuthFallbackController {
 
 	@GetMapping("/oauth2/authorization/google")
 	public ResponseEntity<OAuthUnavailableResponse> googleUnavailable() {
-		// If this ever executes while OAuth IS configured, something upstream (Spring
-		// Security's filter) failed to intercept it as expected - still respond safely
-		// rather than letting an unhandled path fall through to a raw error page.
-		String message = googleOAuthProperties.isConfigured()
-				? "Google sign-in is temporarily unavailable. Please use your email and password, or try again shortly."
-				: "Google sign-in is not configured.";
-		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new OAuthUnavailableResponse(message));
+		if (!googleOAuthProperties.isConfigured()) {
+			// OAuth is intentionally disabled: the endpoint does not exist from the
+			// application's perspective. 404 is the correct response (and what the test
+			// expects) - there is simply no Google login path to use.
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body(new OAuthUnavailableResponse("Google sign-in is not configured."));
+		}
+		// If this executes while OAuth IS configured, Spring Security's
+		// OAuth2AuthorizationRequestRedirectFilter should have intercepted it first.
+		// Something went wrong upstream - still respond safely rather than falling through.
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+				.body(new OAuthUnavailableResponse(
+						"Google sign-in is temporarily unavailable. Please use your email and password, or try again shortly."));
 	}
 }

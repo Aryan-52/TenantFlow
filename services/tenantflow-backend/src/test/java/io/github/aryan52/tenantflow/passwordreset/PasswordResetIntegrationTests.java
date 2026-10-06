@@ -120,7 +120,9 @@ class PasswordResetIntegrationTests {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(objectMapper.writeValueAsString(request))).andExpect(status().isOk());
 
-		assertThat(passwordResetTokenRepository.findByUserIdAndUsedAtIsNull(user.getId())).isEmpty();
+		// The first token is now used (marked by the second request), and the second
+		// request has issued a fresh token that remains active.
+		assertThat(passwordResetTokenRepository.findByUserIdAndUsedAtIsNull(user.getId())).hasSize(1);
 		assertThat(passwordResetTokenRepository.findAll()).hasSize(2);
 	}
 
