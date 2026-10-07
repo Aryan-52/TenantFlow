@@ -1,61 +1,55 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, Link, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import client from '../api/client';
+import { apiError, projectApi, taskApi, type Project, type Task, type TaskStatus } from '../api/work';
 import { useTenant } from '../contexts/TenantContext';
-import type { Project } from './Projects';
-import type { Task } from './Tasks';
 import type { Member } from './Members';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { Select } from '../components/ui/Select';
-import { Modal } from '../components/ui/Modal';
 import { ErrorState } from '../components/ui/ErrorState';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { StatusBadge, PriorityBadge } from '../components/ui/Badge';
+import { PriorityBadge, ProjectStatusBadge } from '../components/ui/Badge';
 import { Skeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
-import { ArrowLeft, Trash2, Edit2, ExternalLink, Plus, CheckSquare } from 'lucide-react';
+import { ProjectFormModal } from '../components/projects/ProjectFormModal';
+import { TaskModal, type TaskDefaults } from '../components/tasks/TaskModal';
+import { TaskTable } from '../components/tasks/TaskTable';
+import { KanbanBoard } from '../components/tasks/KanbanBoard';
+import { TaskCalendar } from '../components/tasks/TaskCalendar';
+import { DueDateLabel } from '../components/tasks/DueDateLabel';
+import { compareByDueThenPriority, dueState, isDueWithinDays, STATUS_LABELS } from '../components/tasks/taskMeta';
+import { ArrowLeft, Trash2, Edit2, Plus, CheckSquare, LayoutDashboard, ListTodo, Columns3, CalendarDays } from 'lucide-react';
 
-const STATUS_OPTIONS = [
-  { value: 'TODO', label: 'To Do' },
-  { value: 'IN_PROGRESS', label: 'In Progress' },
-  { value: 'DONE', label: 'Done' },
-];
-const PRIORITY_OPTIONS = [
-  { value: 'LOW', label: 'Low' },
-  { value: 'MEDIUM', label: 'Medium' },
-  { value: 'HIGH', label: 'High' },
-];
+const VIEWS = [
+  { key: '', label: 'Overview', icon: LayoutDashboard },
+  { key: 'tasks', label: 'Tasks', icon: ListTodo },
+  { key: 'kanban', label: 'Kanban', icon: Columns3 },
+  { key: 'calendar', label: 'Calendar', icon: CalendarDays },
+] as const;
 
 const ProjectDetails = () => {
-  const { projectId } = useParams();
+  const { projectId, view = '' } = useParams();
   const { currentTenant } = useTenant();
   const navigate = useNavigate();
 
   const [project, setProject] = useState<Project | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
 
+  const [editProjectOpen, setEditProjectOpen] = useState(false);
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false);
   const [deleteProjectLoading, setDeleteProjectLoading] = useState(false);
 
-  const [showTaskForm, setShowTaskForm] = useState(false);
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [formTitle, setFormTitle] = useState('');
-  const [formDesc, setFormDesc] = useState('');
-  const [formStatus, setFormStatus] = useState<'TODO' | 'IN_PROGRESS' | 'DONE'>('TODO');
-  const [formPriority, setFormPriority] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
-  const [formAssigneeId, setFormAssigneeId] = useState('');
-  const [formError, setFormError] = useState('');
-  const [formLoading, setFormLoading] = useState(false);
-
-  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
-  const [deleteTaskLoading, setDeleteTaskLoading] = useState(false);
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [taskDefaults, setTaskDefaults] = useState<TaskDefaults | undefined>();
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
 
   const canManage = currentTenant?.myRole === 'ADMIN' || currentTenant?.myRole === 'OWNER';
+  const basePath = `/tenants/${currentTenant?.id}/projects/${projectId}`;
 
   useEffect(() => {
     if (currentTenant && projectId) {
@@ -65,19 +59,22 @@ const ProjectDetails = () => {
   }, [currentTenant?.id, projectId]);
 
   const fetchProjectData = async () => {
+    if (!currentTenant || !projectId) return;
     setLoading(true);
     setError('');
     try {
-      const [projRes, tasksRes, membersRes] = await Promise.all([
-        client.get(`/api/tenants/${currentTenant!.id}/projects/${projectId}`),
-        client.get(`/api/tenants/${currentTenant!.id}/projects/${projectId}/tasks`),
-        client.get(`/api/tenants/${currentTenant!.id}/members`),
+      const [proj, taskList, membersRes, projectList] = await Promise.all([
+        projectApi.get(currentTenant.id, projectId),
+        taskApi.list(currentTenant.id, projectId),
+        client.get(`/api/tenants/${currentTenant.id}/members`),
+        projectApi.list(currentTenant.id),
       ]);
-      setProject(projRes.data);
-      setTasks(tasksRes.data);
+      setProject(proj);
+      setTasks(taskList);
       setMembers(membersRes.data);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load project details');
+      setProjects(projectList);
+    } catch (err) {
+      setError(apiError(err, 'Failed to load project details').message);
     } finally {
       setLoading(false);
     }
@@ -87,121 +84,144 @@ const ProjectDetails = () => {
     if (!currentTenant || !project) return;
     setDeleteProjectLoading(true);
     try {
-      await client.delete(`/api/tenants/${currentTenant.id}/projects/${project.id}`);
+      await projectApi.remove(currentTenant.id, project.id);
       navigate(`/tenants/${currentTenant.id}/projects`);
-    } catch (err: any) {
-      setActionError(err.response?.data?.message || 'Failed to delete project');
+    } catch (err) {
+      setActionError(apiError(err, 'Failed to delete project').message);
       setDeleteProjectLoading(false);
       setDeleteProjectOpen(false);
     }
   };
 
-  const openCreateTask = () => {
-    setEditingTaskId(null);
-    setFormTitle('');
-    setFormDesc('');
-    setFormStatus('TODO');
-    setFormPriority('MEDIUM');
-    setFormAssigneeId('');
-    setFormError('');
-    setShowTaskForm(true);
+  const openCreateTask = (defaults?: TaskDefaults) => {
+    setActiveTask(null);
+    setTaskDefaults(defaults);
+    setTaskModalOpen(true);
   };
 
-  const openEditTask = (task: Task) => {
-    setEditingTaskId(task.id);
-    setFormTitle(task.title);
-    setFormDesc(task.description || '');
-    setFormStatus(task.status);
-    setFormPriority(task.priority);
-    setFormAssigneeId(task.assigneeId || '');
-    setFormError('');
-    setShowTaskForm(true);
+  const openTask = (task: Task) => {
+    setActiveTask(task);
+    setTaskDefaults(undefined);
+    setTaskModalOpen(true);
   };
 
-  const handleTaskSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentTenant || !project) return;
-    setFormError('');
-    setFormLoading(true);
+  const handleTaskSaved = (saved: Task) => {
+    setTasks((prev) => {
+      if (saved.projectId !== projectId) return prev.filter((t) => t.id !== saved.id);
+      return prev.some((t) => t.id === saved.id) ? prev.map((t) => (t.id === saved.id ? saved : t)) : [...prev, saved];
+    });
+  };
+
+  /** Optimistic status change (Kanban / table), rolled back if the server rejects it. */
+  const handleStatusChange = async (task: Task, status: TaskStatus) => {
+    if (!currentTenant || task.status === status || pendingIds.has(task.id)) return;
+    setActionError('');
+    setPendingIds((prev) => new Set(prev).add(task.id));
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
     try {
-      const payload = {
-        title: formTitle,
-        description: formDesc,
-        status: formStatus,
-        priority: formPriority,
-        assigneeId: formAssigneeId || null,
-      };
-      if (editingTaskId) {
-        await client.put(`/api/tenants/${currentTenant.id}/projects/${project.id}/tasks/${editingTaskId}`, payload);
-      } else {
-        await client.post(`/api/tenants/${currentTenant.id}/projects/${project.id}/tasks`, payload);
-      }
-      setShowTaskForm(false);
-      fetchProjectData();
-    } catch (err: any) {
-      setFormError(err.response?.data?.message || 'Failed to save task');
+      const saved = await taskApi.updateStatus(currentTenant.id, task.projectId, task.id, status);
+      setTasks((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
+    } catch (err) {
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t)));
+      setActionError(apiError(err, `Couldn't move "${task.title}" to ${STATUS_LABELS[status]}`).message);
     } finally {
-      setFormLoading(false);
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(task.id);
+        return next;
+      });
     }
   };
 
-  const handleDeleteTask = async () => {
-    if (!currentTenant || !project || !deleteTaskId) return;
-    setDeleteTaskLoading(true);
-    try {
-      await client.delete(`/api/tenants/${currentTenant.id}/projects/${project.id}/tasks/${deleteTaskId}`);
-      setDeleteTaskId(null);
-      fetchProjectData();
-    } catch (err: any) {
-      setActionError(err.response?.data?.message || 'Failed to delete task');
-    } finally {
-      setDeleteTaskLoading(false);
-    }
-  };
+  const stats = useMemo(() => {
+    const done = tasks.filter((t) => t.status === 'DONE').length;
+    return {
+      total: tasks.length,
+      todo: tasks.filter((t) => t.status === 'TODO').length,
+      inProgress: tasks.filter((t) => t.status === 'IN_PROGRESS').length,
+      done,
+      overdue: tasks.filter((t) => dueState(t) === 'overdue').length,
+      percent: tasks.length ? Math.round((done / tasks.length) * 100) : 0,
+    };
+  }, [tasks]);
+
+  const upcoming = useMemo(() => tasks.filter((t) => isDueWithinDays(t, 14)).sort(compareByDueThenPriority).slice(0, 6), [tasks]);
+
+  if (!VIEWS.some((v) => v.key === view)) {
+    return <Navigate to={basePath} replace />;
+  }
 
   if (loading) {
     return (
       <div className="flex flex-col gap-6">
         <Skeleton style={{ height: '3rem', width: '30%' }} />
-        <Skeleton style={{ height: '8rem' }} />
+        <Skeleton style={{ height: '2.5rem' }} />
         <Skeleton style={{ height: '12rem' }} />
       </div>
     );
   }
 
   if (error) return <ErrorState message={error} />;
-  if (!project) return <ErrorState message="Project not found" />;
+  if (!project || !currentTenant) return <ErrorState message="Project not found" />;
 
-  const todoCount = tasks.filter((t) => t.status === 'TODO').length;
-  const inProgressCount = tasks.filter((t) => t.status === 'IN_PROGRESS').length;
-  const doneCount = tasks.filter((t) => t.status === 'DONE').length;
+  const addTaskButton = (
+    <Button size="sm" onClick={() => openCreateTask()}>
+      <Plus size={14} /> Add task
+    </Button>
+  );
 
   return (
     <div>
       <div className="mb-4">
-        <Link to={`/tenants/${currentTenant?.id}/projects`} className="text-muted flex items-center gap-1 text-sm" style={{ textDecoration: 'none', width: 'fit-content' }}>
+        <Link to={`/tenants/${currentTenant.id}/projects`} className="text-muted flex items-center gap-1 text-sm" style={{ textDecoration: 'none', width: 'fit-content' }}>
           <ArrowLeft size={16} /> Back to projects
         </Link>
       </div>
 
-      <div className="flex justify-between items-start gap-4 mb-6 flex-col sm:flex-row">
-        <div>
-          <h1 className="mb-2">{project.name}</h1>
-          <p className="text-muted max-w-2xl">{project.description || 'No description provided.'}</p>
+      <div className="flex justify-between items-start gap-4 mb-4 flex-col sm:flex-row">
+        <div style={{ minWidth: 0 }}>
+          <div className="flex items-center gap-3 flex-wrap mb-1">
+            <h1 className="mb-0">{project.name}</h1>
+            <ProjectStatusBadge status={project.status} />
+          </div>
         </div>
-        {canManage && (
-          <Button variant="danger-outline" onClick={() => setDeleteProjectOpen(true)}>
-            <Trash2 size={16} /> Delete project
-          </Button>
-        )}
+        <div className="flex gap-2 flex-shrink-0">
+          {addTaskButton}
+          {canManage && (
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setEditProjectOpen(true)}>
+                <Edit2 size={14} /> Edit
+              </Button>
+              <Button variant="danger-outline" size="sm" onClick={() => setDeleteProjectOpen(true)}>
+                <Trash2 size={14} /> Delete
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
+      <nav className="tabs mb-6" aria-label="Project views">
+        {VIEWS.map(({ key, label, icon: Icon }) => (
+          <NavLink key={key || 'overview'} to={key ? `${basePath}/${key}` : basePath} end className={({ isActive }) => `tab-link ${isActive ? 'active' : ''}`.trim()}>
+            <Icon size={15} aria-hidden="true" /> {label}
+          </NavLink>
+        ))}
+      </nav>
+
       <ErrorState message={actionError} />
+
+      <ProjectFormModal
+        isOpen={editProjectOpen}
+        onClose={() => setEditProjectOpen(false)}
+        tenantId={currentTenant.id}
+        project={project}
+        onSaved={setProject}
+      />
 
       <ConfirmDialog
         isOpen={deleteProjectOpen}
         title="Delete project"
-        message="Are you sure you want to delete this project? All associated tasks will be lost."
+        message={`Delete "${project.name}"? This permanently deletes the project and its ${tasks.length} task${tasks.length === 1 ? '' : 's'}. This action cannot be undone.`}
         confirmText="Delete project"
         isDestructive
         isLoading={deleteProjectLoading}
@@ -209,117 +229,130 @@ const ProjectDetails = () => {
         onCancel={() => setDeleteProjectOpen(false)}
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="card card-padded text-center">
-          <p className="text-muted text-sm font-medium mb-1">Total tasks</p>
-          <h2 className="mb-0">{tasks.length}</h2>
-        </div>
-        <div className="card card-padded text-center">
-          <p className="text-muted text-sm font-medium mb-1">To do</p>
-          <h2 className="mb-0">{todoCount}</h2>
-        </div>
-        <div className="card card-padded text-center" style={{ backgroundColor: 'var(--primary-light)', borderColor: 'var(--primary-100)' }}>
-          <p className="text-sm font-medium mb-1 text-primary">In progress</p>
-          <h2 className="mb-0 text-primary">{inProgressCount}</h2>
-        </div>
-        <div className="card card-padded text-center" style={{ backgroundColor: 'var(--success-bg)', borderColor: 'var(--success-border)' }}>
-          <p className="text-sm font-medium mb-1 text-success">Done</p>
-          <h2 className="mb-0 text-success">{doneCount}</h2>
-        </div>
-      </div>
-
-      <Modal isOpen={showTaskForm} onClose={() => setShowTaskForm(false)} title={editingTaskId ? 'Edit task' : 'Create task'}>
-        <form id="project-task-form" onSubmit={handleTaskSubmit} noValidate>
-          <ErrorState message={formError} />
-          <Input label="Title" value={formTitle} onChange={(e) => setFormTitle(e.target.value)} required placeholder="What needs to be done?" autoFocus />
-          <div className="form-group">
-            <label htmlFor="pd-task-description">Description</label>
-            <textarea id="pd-task-description" value={formDesc} onChange={(e) => setFormDesc(e.target.value)} rows={3} placeholder="Add more details..." />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Select label="Status" value={formStatus} onChange={(e) => setFormStatus(e.target.value as any)} options={STATUS_OPTIONS} />
-            <Select label="Priority" value={formPriority} onChange={(e) => setFormPriority(e.target.value as any)} options={PRIORITY_OPTIONS} />
-            <div className="md:col-span-2">
-              <Select
-                label="Assignee"
-                value={formAssigneeId}
-                onChange={(e) => setFormAssigneeId(e.target.value)}
-                options={[{ value: '', label: 'Unassigned' }, ...members.map((m) => ({ value: m.userId, label: m.name }))]}
-              />
-            </div>
-          </div>
-        </form>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setShowTaskForm(false)}>
-            Cancel
-          </Button>
-          <Button type="submit" form="project-task-form" isLoading={formLoading}>
-            Save
-          </Button>
-        </div>
-      </Modal>
-
-      <ConfirmDialog
-        isOpen={!!deleteTaskId}
-        title="Delete task"
-        message="Are you sure you want to delete this task? This action cannot be undone."
-        confirmText="Delete task"
-        isDestructive
-        isLoading={deleteTaskLoading}
-        onConfirm={handleDeleteTask}
-        onCancel={() => setDeleteTaskId(null)}
+      <TaskModal
+        isOpen={taskModalOpen}
+        onClose={() => setTaskModalOpen(false)}
+        tenantId={currentTenant.id}
+        projectId={project.id}
+        task={activeTask}
+        defaults={taskDefaults}
+        members={members}
+        projects={projects}
+        canDelete={canManage}
+        onSaved={handleTaskSaved}
+        onDeleted={(id) => setTasks((prev) => prev.filter((t) => t.id !== id))}
       />
 
-      <div className="card">
-        <div className="card-header">
-          <h3 className="mb-0">Tasks</h3>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={openCreateTask}>
-              <Plus size={14} /> Add task
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigate(`/tenants/${currentTenant?.id}/tasks?projectId=${project.id}`)}
-            >
-              Full task board <ExternalLink size={14} />
-            </Button>
-          </div>
-        </div>
-
-        <div className="card-body">
-          {tasks.length === 0 ? (
-            <EmptyState icon={<CheckSquare size={22} />} title="No tasks yet" description="Add the first task to get this project moving." />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {tasks.slice(0, 8).map((t) => (
-                <div key={t.id} className="flex justify-between items-center gap-3 p-3 border rounded-md">
-                  <div style={{ minWidth: 0 }}>
-                    <div className="font-medium truncate">{t.title}</div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <StatusBadge status={t.status} />
-                      <PriorityBadge priority={t.priority} />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button variant="ghost" size="sm" className="btn-icon" onClick={() => openEditTask(t)} title="Edit">
-                      <Edit2 size={15} />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="btn-icon text-danger" onClick={() => setDeleteTaskId(t.id)} title="Delete">
-                      <Trash2 size={15} />
-                    </Button>
-                  </div>
+      {view === '' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="card md:col-span-2">
+            <div className="card-header">
+              <h3 className="mb-0">About this project</h3>
+            </div>
+            <div className="card-body">
+              <p className="text-secondary mb-4" style={{ whiteSpace: 'pre-wrap' }}>
+                {project.description || <span className="text-muted">No description provided.</span>}
+              </p>
+              <dl className="detail-list">
+                <div>
+                  <dt>Status</dt>
+                  <dd>
+                    <ProjectStatusBadge status={project.status} />
+                  </dd>
                 </div>
-              ))}
-              {tasks.length > 8 && (
-                <p className="text-sm text-muted text-center mt-2">
-                  +{tasks.length - 8} more task{tasks.length - 8 === 1 ? '' : 's'} — see the full task board.
-                </p>
+                <div>
+                  <dt>Owner</dt>
+                  <dd>{project.createdByName || <span className="text-muted">Unknown</span>}</dd>
+                </div>
+                <div>
+                  <dt>Created</dt>
+                  <dd>{new Date(project.createdAt).toLocaleDateString()}</dd>
+                </div>
+                <div>
+                  <dt>Last updated</dt>
+                  <dd>{new Date(project.updatedAt).toLocaleDateString()}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header">
+              <h3 className="mb-0">Progress</h3>
+              <span className="text-sm font-semibold">{stats.percent}%</span>
+            </div>
+            <div className="card-body">
+              <div className="progress mb-4" aria-label={`${stats.percent}% of tasks done`}>
+                <div className="progress-bar" style={{ width: `${stats.percent}%` }} />
+              </div>
+              <ul className="stat-list">
+                <li>
+                  <span>To do</span>
+                  <strong>{stats.todo}</strong>
+                </li>
+                <li>
+                  <span>In progress</span>
+                  <strong className="text-primary">{stats.inProgress}</strong>
+                </li>
+                <li>
+                  <span>Done</span>
+                  <strong className="text-success">{stats.done}</strong>
+                </li>
+                <li>
+                  <span>Overdue</span>
+                  <strong className={stats.overdue ? 'text-danger' : undefined}>{stats.overdue}</strong>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="card md:col-span-3">
+            <div className="card-header">
+              <h3 className="mb-0">Due soon & overdue</h3>
+              <Link to={`${basePath}/calendar`} className="text-sm text-primary" style={{ textDecoration: 'none' }}>
+                Open calendar
+              </Link>
+            </div>
+            <div className="card-body">
+              {tasks.length === 0 ? (
+                <EmptyState icon={<CheckSquare size={22} />} title="No tasks yet" description="Add the first task to get this project moving." action={addTaskButton} />
+              ) : upcoming.length === 0 ? (
+                <p className="text-sm text-muted">Nothing due in the next two weeks.</p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {upcoming.map((t) => (
+                    <li key={t.id}>
+                      <button type="button" className="cal-day-item" onClick={() => openTask(t)}>
+                        <span className="font-medium truncate">{t.title}</span>
+                        <span className="flex items-center gap-2 flex-shrink-0">
+                          <PriorityBadge priority={t.priority} />
+                          <DueDateLabel task={t} />
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {view === 'tasks' && (
+        <TaskTable tasks={tasks} members={members} onOpen={openTask} onStatusChange={handleStatusChange} emptyAction={addTaskButton} />
+      )}
+
+      {view === 'kanban' && (
+        <KanbanBoard
+          tasks={tasks}
+          pendingIds={pendingIds}
+          onOpen={openTask}
+          onMove={handleStatusChange}
+          onCreate={(status) => openCreateTask({ status })}
+        />
+      )}
+
+      {view === 'calendar' && <TaskCalendar tasks={tasks} onOpen={openTask} onCreate={(dueDate) => openCreateTask({ dueDate })} />}
     </div>
   );
 };

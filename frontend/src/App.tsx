@@ -98,7 +98,7 @@ const App = () => {
           {/* Tenant-scoped routes */}
           <Route path="/tenants/:tenantId/dashboard" element={<ProtectedRoute><TenantRoute><Dashboard /></TenantRoute></ProtectedRoute>} />
           <Route path="/tenants/:tenantId/projects" element={<ProtectedRoute><TenantRoute><Projects /></TenantRoute></ProtectedRoute>} />
-          <Route path="/tenants/:tenantId/projects/:projectId" element={<ProtectedRoute><TenantRoute><ProjectDetails /></TenantRoute></ProtectedRoute>} />
+          <Route path="/tenants/:tenantId/projects/:projectId/:view?" element={<ProtectedRoute><TenantRoute><ProjectDetails /></TenantRoute></ProtectedRoute>} />
           <Route path="/tenants/:tenantId/tasks" element={<ProtectedRoute><TenantRoute><Tasks /></TenantRoute></ProtectedRoute>} />
           <Route path="/tenants/:tenantId/members" element={<ProtectedRoute><TenantRoute><Members /></TenantRoute></ProtectedRoute>} />
           <Route path="/tenants/:tenantId/settings" element={<ProtectedRoute><TenantRoute><Settings /></TenantRoute></ProtectedRoute>} />
