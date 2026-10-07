@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import client from '../api/client';
-import { apiError, projectApi, taskApi, type Project, type Task, type TaskStatus } from '../api/work';
+import { apiError, projectApi, taskApi, type Project, type Task } from '../api/work';
 import { useTenant } from '../contexts/TenantContext';
 import type { Member } from './Members';
 import { Button } from '../components/ui/Button';
@@ -16,7 +16,8 @@ import { TaskTable } from '../components/tasks/TaskTable';
 import { KanbanBoard } from '../components/tasks/KanbanBoard';
 import { TaskCalendar } from '../components/tasks/TaskCalendar';
 import { DueDateLabel } from '../components/tasks/DueDateLabel';
-import { compareByDueThenPriority, dueState, isDueWithinDays, STATUS_LABELS } from '../components/tasks/taskMeta';
+import { compareByDueThenPriority, dueState, isDueWithinDays } from '../components/tasks/taskMeta';
+import { useTaskStatusChange } from '../components/tasks/useTaskStatusChange';
 import { ArrowLeft, Trash2, Edit2, Plus, CheckSquare, LayoutDashboard, ListTodo, Columns3, CalendarDays } from 'lucide-react';
 
 const VIEWS = [
@@ -46,39 +47,41 @@ const ProjectDetails = () => {
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [taskDefaults, setTaskDefaults] = useState<TaskDefaults | undefined>();
-  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
 
   const canManage = currentTenant?.myRole === 'ADMIN' || currentTenant?.myRole === 'OWNER';
   const basePath = `/tenants/${currentTenant?.id}/projects/${projectId}`;
 
-  useEffect(() => {
-    if (currentTenant && projectId) {
-      fetchProjectData();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTenant?.id, projectId]);
+  const tenantId = currentTenant?.id;
+  const statusChange = useTaskStatusChange(tenantId, setTasks);
 
-  const fetchProjectData = async () => {
-    if (!currentTenant || !projectId) return;
-    setLoading(true);
-    setError('');
-    try {
-      const [proj, taskList, membersRes, projectList] = await Promise.all([
-        projectApi.get(currentTenant.id, projectId),
-        taskApi.list(currentTenant.id, projectId),
-        client.get(`/api/tenants/${currentTenant.id}/members`),
-        projectApi.list(currentTenant.id),
-      ]);
-      setProject(proj);
-      setTasks(taskList);
-      setMembers(membersRes.data);
-      setProjects(projectList);
-    } catch (err) {
-      setError(apiError(err, 'Failed to load project details').message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // The component is remounted per workspace + project (see ProjectDetailsPage), so state
+  // always starts empty; responses that arrive after a switch are ignored.
+  useEffect(() => {
+    if (!tenantId || !projectId) return;
+    let cancelled = false;
+    Promise.all([
+      projectApi.get(tenantId, projectId),
+      taskApi.list(tenantId, projectId),
+      client.get<Member[]>(`/api/tenants/${tenantId}/members`),
+      projectApi.list(tenantId),
+    ])
+      .then(([proj, taskList, membersRes, projectList]) => {
+        if (cancelled) return;
+        setProject(proj);
+        setTasks(taskList);
+        setMembers(membersRes.data);
+        setProjects(projectList);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(apiError(err, 'Failed to load project details').message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, projectId]);
 
   const handleDeleteProject = async () => {
     if (!currentTenant || !project) return;
@@ -110,27 +113,6 @@ const ProjectDetails = () => {
       if (saved.projectId !== projectId) return prev.filter((t) => t.id !== saved.id);
       return prev.some((t) => t.id === saved.id) ? prev.map((t) => (t.id === saved.id ? saved : t)) : [...prev, saved];
     });
-  };
-
-  /** Optimistic status change (Kanban / table), rolled back if the server rejects it. */
-  const handleStatusChange = async (task: Task, status: TaskStatus) => {
-    if (!currentTenant || task.status === status || pendingIds.has(task.id)) return;
-    setActionError('');
-    setPendingIds((prev) => new Set(prev).add(task.id));
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
-    try {
-      const saved = await taskApi.updateStatus(currentTenant.id, task.projectId, task.id, status);
-      setTasks((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
-    } catch (err) {
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t)));
-      setActionError(apiError(err, `Couldn't move "${task.title}" to ${STATUS_LABELS[status]}`).message);
-    } finally {
-      setPendingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(task.id);
-        return next;
-      });
-    }
   };
 
   const stats = useMemo(() => {
@@ -208,7 +190,7 @@ const ProjectDetails = () => {
         ))}
       </nav>
 
-      <ErrorState message={actionError} />
+      <ErrorState message={actionError || statusChange.error} />
 
       <ProjectFormModal
         isOpen={editProjectOpen}
@@ -339,15 +321,15 @@ const ProjectDetails = () => {
       )}
 
       {view === 'tasks' && (
-        <TaskTable tasks={tasks} members={members} onOpen={openTask} onStatusChange={handleStatusChange} emptyAction={addTaskButton} />
+        <TaskTable tasks={tasks} members={members} onOpen={openTask} onStatusChange={statusChange.changeStatus} emptyAction={addTaskButton} />
       )}
 
       {view === 'kanban' && (
         <KanbanBoard
           tasks={tasks}
-          pendingIds={pendingIds}
+          pendingIds={statusChange.pendingIds}
           onOpen={openTask}
-          onMove={handleStatusChange}
+          onMove={statusChange.changeStatus}
           onCreate={(status) => openCreateTask({ status })}
         />
       )}
@@ -357,4 +339,12 @@ const ProjectDetails = () => {
   );
 };
 
-export default ProjectDetails;
+/** Remount on workspace/project change (not on tab change) so no state from the previous
+ * project or workspace can leak into the new one. */
+const ProjectDetailsPage = () => {
+  const { projectId } = useParams();
+  const { currentTenant } = useTenant();
+  return <ProjectDetails key={`${currentTenant?.id}:${projectId}`} />;
+};
+
+export default ProjectDetailsPage;

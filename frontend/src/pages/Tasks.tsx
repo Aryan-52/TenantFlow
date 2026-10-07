@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import client from '../api/client';
-import { apiError, projectApi, taskApi, type Project, type Task, type TaskStatus } from '../api/work';
+import { apiError, projectApi, taskApi, type Project, type Task } from '../api/work';
 import { useTenant } from '../contexts/TenantContext';
 import type { Member } from './Members';
 import { Button } from '../components/ui/Button';
@@ -12,6 +12,7 @@ import { ErrorState } from '../components/ui/ErrorState';
 import { PageHeader } from '../components/ui/PageHeader';
 import { TaskTable } from '../components/tasks/TaskTable';
 import { TaskModal } from '../components/tasks/TaskModal';
+import { useTaskStatusChange } from '../components/tasks/useTaskStatusChange';
 import { CheckSquare, Plus } from 'lucide-react';
 
 const Tasks = () => {
@@ -25,73 +26,62 @@ const Tasks = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [actionError, setActionError] = useState('');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
   const canDelete = currentTenant?.myRole === 'ADMIN' || currentTenant?.myRole === 'OWNER';
+  const tenantId = currentTenant?.id;
+  const statusChange = useTaskStatusChange(tenantId, setTasks);
 
+  // Load the workspace's projects and members. The page is remounted per workspace (see
+  // TasksPage), so state starts empty; a late response for another workspace is ignored.
   useEffect(() => {
-    if (currentTenant) {
-      fetchProjectsAndMembers();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTenant?.id]);
-
-  useEffect(() => {
-    if (selectedProjectId) {
-      setSearchParams({ projectId: selectedProjectId }, { replace: true });
-      fetchTasks();
-    } else {
-      setTasks([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProjectId, currentTenant?.id]);
-
-  const fetchProjectsAndMembers = async () => {
-    if (!currentTenant) return;
-    try {
-      const [projectList, memRes] = await Promise.all([
-        projectApi.list(currentTenant.id),
-        client.get(`/api/tenants/${currentTenant.id}/members`),
-      ]);
-      setProjects(projectList);
-      setMembers(memRes.data);
-      if (!selectedProjectId && projectList.length > 0) {
-        setSelectedProjectId(projectList[0].id);
-      } else if (projectList.length === 0) {
+    if (!tenantId) return;
+    let cancelled = false;
+    Promise.all([projectApi.list(tenantId), client.get<Member[]>(`/api/tenants/${tenantId}/members`)])
+      .then(([projectList, memRes]) => {
+        if (cancelled) return;
+        setProjects(projectList);
+        setMembers(memRes.data);
+        // Keep the selection (e.g. from ?projectId=) only if it belongs to this workspace.
+        setSelectedProjectId((prev) => (projectList.some((p) => p.id === prev) ? prev : projectList[0]?.id ?? ''));
+        if (projectList.length === 0) setLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(apiError(err, 'Failed to load required data.').message);
         setLoading(false);
-      }
-    } catch (err) {
-      setError(apiError(err, 'Failed to load required data.').message);
-      setLoading(false);
-    }
-  };
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
 
-  const fetchTasks = async () => {
-    if (!currentTenant || !selectedProjectId) return;
-    setLoading(true);
+  // Load tasks only for a project known to belong to the current workspace.
+  useEffect(() => {
+    if (!tenantId || !projects.some((p) => p.id === selectedProjectId)) return;
+    let cancelled = false;
+    setSearchParams({ projectId: selectedProjectId }, { replace: true });
+    setTasks([]);
     setError('');
-    try {
-      setTasks(await taskApi.list(currentTenant.id, selectedProjectId));
-    } catch (err) {
-      setError(apiError(err, 'Failed to load tasks').message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStatusChange = async (task: Task, status: TaskStatus) => {
-    if (!currentTenant) return;
-    setActionError('');
-    try {
-      const saved = await taskApi.updateStatus(currentTenant.id, task.projectId, task.id, status);
-      setTasks((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
-    } catch (err) {
-      setActionError(apiError(err, 'Failed to update task status').message);
-    }
-  };
+    setLoading(true);
+    taskApi
+      .list(tenantId, selectedProjectId)
+      .then((list) => {
+        if (!cancelled) setTasks(list);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(apiError(err, 'Failed to load tasks').message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, selectedProjectId, projects]);
 
   const handleSaved = (saved: Task) => {
     setTasks((prev) => {
@@ -139,7 +129,7 @@ const Tasks = () => {
       />
 
       <ErrorState message={error} />
-      <ErrorState message={actionError} />
+      <ErrorState message={statusChange.error} />
 
       {selectedProjectId && (
         <TaskModal
@@ -170,7 +160,7 @@ const Tasks = () => {
           tasks={tasks}
           members={members}
           onOpen={openTask}
-          onStatusChange={handleStatusChange}
+          onStatusChange={statusChange.changeStatus}
           emptyAction={<Button onClick={openCreate}>Create task</Button>}
         />
       )}
@@ -178,4 +168,10 @@ const Tasks = () => {
   );
 };
 
-export default Tasks;
+/** Remount on workspace change so no projects/tasks from the previous workspace remain. */
+const TasksPage = () => {
+  const { currentTenant } = useTenant();
+  return <Tasks key={currentTenant?.id ?? 'none'} />;
+};
+
+export default TasksPage;
