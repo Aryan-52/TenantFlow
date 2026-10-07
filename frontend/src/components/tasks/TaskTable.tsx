@@ -8,9 +8,34 @@ import { PriorityBadge } from '../ui/Badge';
 import { Table } from '../ui/Table';
 import { EmptyState } from '../ui/EmptyState';
 import { DueDateLabel } from './DueDateLabel';
-import { PRIORITY_OPTIONS, PRIORITY_RANK, STATUS_OPTIONS, compareByDueThenPriority, dueState } from './taskMeta';
+import { PRIORITY_OPTIONS, PRIORITY_RANK, STATUS_OPTIONS, compareByDueThenPriority, dueState, isDueWithinDays } from './taskMeta';
 
 type SortOption = 'due' | 'priority' | 'updated' | 'title';
+type DueFilter = '' | 'overdue' | 'today' | 'week' | 'none';
+
+const DUE_OPTIONS: { value: DueFilter; label: string }[] = [
+  { value: '', label: 'Any due date' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'today', label: 'Due today' },
+  { value: 'week', label: 'Due in next 7 days' },
+  { value: 'none', label: 'No due date' },
+];
+
+const matchesDue = (task: Task, filter: DueFilter) => {
+  switch (filter) {
+    case 'overdue':
+      return dueState(task) === 'overdue';
+    case 'today':
+      return dueState(task) === 'today';
+    case 'week':
+      // Open tasks due from today through the next 7 days (overdue ones have their own option).
+      return isDueWithinDays(task, 7) && dueState(task) !== 'overdue';
+    case 'none':
+      return !task.dueDate;
+    default:
+      return true;
+  }
+};
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'due', label: 'Sort: due date' },
@@ -34,16 +59,16 @@ export const TaskTable = ({ tasks, members, onOpen, onStatusChange, emptyAction 
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [dueFilter, setDueFilter] = useState<DueFilter>('');
   const [sort, setSort] = useState<SortOption>('due');
 
   const visibleTasks = useMemo(() => {
     const q = search.trim().toLowerCase();
     const filtered = tasks.filter((t) => {
       if (q && !t.title.toLowerCase().includes(q) && !(t.description ?? '').toLowerCase().includes(q)) return false;
-      if (statusFilter === 'OVERDUE') {
-        if (dueState(t) !== 'overdue') return false;
-      } else if (statusFilter && t.status !== statusFilter) return false;
+      if (statusFilter && t.status !== statusFilter) return false;
       if (priorityFilter && t.priority !== priorityFilter) return false;
+      if (!matchesDue(t, dueFilter)) return false;
       if (assigneeFilter === 'unassigned') return !t.assigneeId;
       if (assigneeFilter && t.assigneeId !== assigneeFilter) return false;
       return true;
@@ -64,9 +89,9 @@ export const TaskTable = ({ tasks, members, onOpen, onStatusChange, emptyAction 
         sorted.sort(compareByDueThenPriority);
     }
     return sorted;
-  }, [tasks, search, statusFilter, priorityFilter, assigneeFilter, sort]);
+  }, [tasks, search, statusFilter, priorityFilter, assigneeFilter, dueFilter, sort]);
 
-  const hasActiveFilters = !!(search || statusFilter || priorityFilter || assigneeFilter);
+  const hasActiveFilters = !!(search || statusFilter || priorityFilter || assigneeFilter || dueFilter);
 
   return (
     <div>
@@ -75,7 +100,7 @@ export const TaskTable = ({ tasks, members, onOpen, onStatusChange, emptyAction 
         <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          options={[{ value: '', label: 'All statuses' }, ...STATUS_OPTIONS, { value: 'OVERDUE', label: 'Overdue' }]}
+          options={[{ value: '', label: 'All statuses' }, ...STATUS_OPTIONS]}
           aria-label="Filter by status"
           style={{ maxWidth: '160px' }}
         />
@@ -95,6 +120,13 @@ export const TaskTable = ({ tasks, members, onOpen, onStatusChange, emptyAction 
             ...members.map((m) => ({ value: m.userId, label: m.name })),
           ]}
           aria-label="Filter by assignee"
+          style={{ maxWidth: '180px' }}
+        />
+        <Select
+          value={dueFilter}
+          onChange={(e) => setDueFilter(e.target.value as DueFilter)}
+          options={DUE_OPTIONS}
+          aria-label="Filter by due date"
           style={{ maxWidth: '180px' }}
         />
         <Select
