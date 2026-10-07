@@ -343,6 +343,9 @@ class TaskIntegrationTests {
 		mockMvc.perform(get(tasksUrl(tenant, project))
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + otherToken))
 				.andExpect(status().isForbidden());
+		mockMvc.perform(get(tasksUrl(tenant, project) + "/" + task.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + otherToken))
+				.andExpect(status().isForbidden());
 		mockMvc.perform(put(tasksUrl(tenant, project) + "/" + task.getId())
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + otherToken)
 						.contentType(MediaType.APPLICATION_JSON)
@@ -357,6 +360,14 @@ class TaskIntegrationTests {
 		// ...nor reach it by pairing their own tenant id with tenant 1's project/task ids.
 		mockMvc.perform(get("/api/tenants/" + otherTenant.getId() + "/projects/" + project.getId() + "/tasks")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + otherToken))
+				.andExpect(status().isNotFound());
+		mockMvc.perform(get("/api/tenants/" + otherTenant.getId() + "/projects/" + otherProject.getId() + "/tasks/" + task.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + otherToken))
+				.andExpect(status().isNotFound());
+		mockMvc.perform(patch("/api/tenants/" + otherTenant.getId() + "/projects/" + otherProject.getId() + "/tasks/" + task.getId() + "/status")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + otherToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"status\":\"DONE\"}"))
 				.andExpect(status().isNotFound());
 		mockMvc.perform(put("/api/tenants/" + otherTenant.getId() + "/projects/" + otherProject.getId() + "/tasks/" + task.getId())
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + otherToken)
@@ -409,5 +420,66 @@ class TaskIntegrationTests {
 				.andExpect(status().isForbidden());
 
 		assertThat(taskRepository.findById(task.getId())).isPresent();
+	}
+
+	@Test
+	void taskDetailReturnsCompleteInformation() throws Exception {
+		Task task = taskRepository.save(Task.builder().project(project).title("Detail").description("Full info")
+				.status(TaskStatus.IN_PROGRESS).priority(TaskPriority.HIGH).assignee(memberUser).createdBy(adminUser)
+				.dueDate(LocalDate.of(2026, 7, 4)).build());
+
+		mockMvc.perform(get(tasksUrl(tenant, project) + "/" + task.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(task.getId().toString()))
+				.andExpect(jsonPath("$.projectId").value(project.getId().toString()))
+				.andExpect(jsonPath("$.title").value("Detail"))
+				.andExpect(jsonPath("$.description").value("Full info"))
+				.andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+				.andExpect(jsonPath("$.priority").value("HIGH"))
+				.andExpect(jsonPath("$.assigneeId").value(memberUser.getId().toString()))
+				.andExpect(jsonPath("$.assigneeName").value("M"))
+				.andExpect(jsonPath("$.createdById").value(adminUser.getId().toString()))
+				.andExpect(jsonPath("$.createdByName").value("A"))
+				.andExpect(jsonPath("$.dueDate").value("2026-07-04"))
+				.andExpect(jsonPath("$.createdAt").exists())
+				.andExpect(jsonPath("$.updatedAt").exists());
+	}
+
+	@Test
+	void taskListExposesDueDatesForCalendar() throws Exception {
+		taskRepository.save(Task.builder().project(project).title("Dated").status(TaskStatus.TODO)
+				.priority(TaskPriority.LOW).dueDate(LocalDate.of(2026, 2, 28)).build());
+		taskRepository.save(Task.builder().project(project).title("Done dated").status(TaskStatus.DONE)
+				.priority(TaskPriority.LOW).dueDate(LocalDate.of(2026, 2, 27)).build());
+		saveTask(project, "Undated");
+
+		mockMvc.perform(get(tasksUrl(tenant, project))
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(3))
+				.andExpect(jsonPath("$[?(@.title == 'Dated')].dueDate").value("2026-02-28"))
+				.andExpect(jsonPath("$[?(@.title == 'Done dated')].status").value("DONE"))
+				.andExpect(jsonPath("$[?(@.title == 'Done dated')].dueDate").value("2026-02-27"))
+				.andExpect(jsonPath("$[?(@.title == 'Undated')].dueDate").value(org.hamcrest.Matchers.contains((Object) null)));
+	}
+
+	@Test
+	void kanbanMovesPersistAcrossAllColumns() throws Exception {
+		Task task = saveTask(project, "Card");
+
+		for (TaskStatus target : new TaskStatus[] {TaskStatus.IN_PROGRESS, TaskStatus.DONE, TaskStatus.TODO}) {
+			mockMvc.perform(patch(tasksUrl(tenant, project) + "/" + task.getId() + "/status")
+							.header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("{\"status\":\"" + target.name() + "\"}"))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.status").value(target.name()));
+
+			// Re-read through the API: the move is persisted, not just echoed back.
+			mockMvc.perform(get(tasksUrl(tenant, project) + "/" + task.getId())
+							.header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken))
+					.andExpect(jsonPath("$.status").value(target.name()));
+		}
 	}
 }
