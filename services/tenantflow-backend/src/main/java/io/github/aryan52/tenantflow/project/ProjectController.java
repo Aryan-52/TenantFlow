@@ -3,6 +3,7 @@ package io.github.aryan52.tenantflow.project;
 import io.github.aryan52.tenantflow.project.dto.CreateProjectRequest;
 import io.github.aryan52.tenantflow.project.dto.ProjectResponse;
 import io.github.aryan52.tenantflow.project.dto.UpdateProjectRequest;
+import io.github.aryan52.tenantflow.security.AuthenticatedUser;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -10,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,10 +47,11 @@ public class ProjectController {
 	@PreAuthorize("@tenantSecurity.hasRole(#tenantId, 'ADMIN', 'OWNER')")
 	public ResponseEntity<ProjectResponse> createProject(
 			@PathVariable UUID tenantId,
+			@AuthenticationPrincipal AuthenticatedUser currentUser,
 			@Valid @RequestBody CreateProjectRequest request
 	) {
 		return ResponseEntity.status(HttpStatus.CREATED)
-				.body(projectService.createProject(tenantId, request));
+				.body(projectService.createProject(tenantId, currentUser.getId(), request));
 	}
 
 	@PutMapping("/{projectId}")

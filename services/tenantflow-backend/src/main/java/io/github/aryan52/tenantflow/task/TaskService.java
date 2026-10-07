@@ -11,7 +11,9 @@ import io.github.aryan52.tenantflow.repository.UserRepository;
 import io.github.aryan52.tenantflow.task.dto.CreateTaskRequest;
 import io.github.aryan52.tenantflow.task.dto.TaskResponse;
 import io.github.aryan52.tenantflow.task.dto.UpdateTaskRequest;
+import io.github.aryan52.tenantflow.task.dto.UpdateTaskStatusRequest;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -29,42 +31,30 @@ public class TaskService {
 
 	@Transactional(readOnly = true)
 	public List<TaskResponse> getTasks(UUID tenantId, UUID projectId) {
-		Project project = projectRepository.findByIdAndTenant_Id(projectId, tenantId)
-				.orElseThrow(() -> new ResourceNotFoundException("Project"));
-		return taskRepository.findByProject_Id(projectId).stream()
+		findProject(tenantId, projectId);
+		return taskRepository.findByProject_IdOrderByCreatedAtAsc(projectId).stream()
 				.map(TaskResponse::from)
 				.collect(Collectors.toList());
 	}
 
 	@Transactional(readOnly = true)
 	public TaskResponse getTask(UUID tenantId, UUID projectId, UUID taskId) {
-		Project project = projectRepository.findByIdAndTenant_Id(projectId, tenantId)
-				.orElseThrow(() -> new ResourceNotFoundException("Project"));
-		Task task = taskRepository.findByIdAndProject_Id(taskId, projectId)
-				.orElseThrow(() -> new ResourceNotFoundException("Task"));
-		return TaskResponse.from(task);
+		return TaskResponse.from(findTask(tenantId, projectId, taskId));
 	}
 
 	@Transactional
-	public TaskResponse createTask(UUID tenantId, UUID projectId, CreateTaskRequest request) {
-		Project project = projectRepository.findByIdAndTenant_Id(projectId, tenantId)
-				.orElseThrow(() -> new ResourceNotFoundException("Project"));
-
-		User assignee = null;
-		if (request.assigneeId() != null) {
-			membershipRepository.findByUser_IdAndTenant_Id(request.assigneeId(), tenantId)
-					.orElseThrow(() -> new IllegalArgumentException("Assignee must be a member of the tenant"));
-			assignee = userRepository.findById(request.assigneeId())
-					.orElseThrow(() -> new ResourceNotFoundException("User"));
-		}
+	public TaskResponse createTask(UUID tenantId, UUID projectId, UUID currentUserId, CreateTaskRequest request) {
+		Project project = findProject(tenantId, projectId);
 
 		Task task = Task.builder()
 				.project(project)
 				.title(request.title().trim())
-				.description(request.description() != null ? request.description().trim() : null)
+				.description(trimToNull(request.description()))
 				.status(request.status())
 				.priority(request.priority())
-				.assignee(assignee)
+				.assignee(resolveAssignee(tenantId, request.assigneeId(), null))
+				.createdBy(userRepository.getReferenceById(currentUserId))
+				.dueDate(request.dueDate())
 				.build();
 
 		return TaskResponse.from(taskRepository.save(task));
@@ -72,34 +62,71 @@ public class TaskService {
 
 	@Transactional
 	public TaskResponse updateTask(UUID tenantId, UUID projectId, UUID taskId, UpdateTaskRequest request) {
-		Project project = projectRepository.findByIdAndTenant_Id(projectId, tenantId)
-				.orElseThrow(() -> new ResourceNotFoundException("Project"));
-		Task task = taskRepository.findByIdAndProject_Id(taskId, projectId)
-				.orElseThrow(() -> new ResourceNotFoundException("Task"));
+		Task task = findTask(tenantId, projectId, taskId);
 
-		User assignee = null;
-		if (request.assigneeId() != null) {
-			membershipRepository.findByUser_IdAndTenant_Id(request.assigneeId(), tenantId)
-					.orElseThrow(() -> new IllegalArgumentException("Assignee must be a member of the tenant"));
-			assignee = userRepository.findById(request.assigneeId())
-					.orElseThrow(() -> new ResourceNotFoundException("User"));
+		if (request.projectId() != null && !request.projectId().equals(projectId)) {
+			// Target is looked up within the same tenant, so a task can never be moved
+			// into (or reveal the existence of) another workspace's project.
+			task.setProject(findProject(tenantId, request.projectId()));
 		}
 
 		task.setTitle(request.title().trim());
-		task.setDescription(request.description() != null ? request.description().trim() : null);
+		task.setDescription(trimToNull(request.description()));
 		task.setStatus(request.status());
 		task.setPriority(request.priority());
-		task.setAssignee(assignee);
+		task.setAssignee(resolveAssignee(tenantId, request.assigneeId(), task.getAssignee()));
+		task.setDueDate(request.dueDate());
 
 		return TaskResponse.from(taskRepository.save(task));
 	}
 
 	@Transactional
+	public TaskResponse updateTaskStatus(UUID tenantId, UUID projectId, UUID taskId, UpdateTaskStatusRequest request) {
+		Task task = findTask(tenantId, projectId, taskId);
+		task.setStatus(request.status());
+		return TaskResponse.from(taskRepository.save(task));
+	}
+
+	@Transactional
 	public void deleteTask(UUID tenantId, UUID projectId, UUID taskId) {
-		Project project = projectRepository.findByIdAndTenant_Id(projectId, tenantId)
+		taskRepository.delete(findTask(tenantId, projectId, taskId));
+	}
+
+	private Project findProject(UUID tenantId, UUID projectId) {
+		return projectRepository.findByIdAndTenant_Id(projectId, tenantId)
 				.orElseThrow(() -> new ResourceNotFoundException("Project"));
-		Task task = taskRepository.findByIdAndProject_Id(taskId, projectId)
+	}
+
+	private Task findTask(UUID tenantId, UUID projectId, UUID taskId) {
+		findProject(tenantId, projectId);
+		return taskRepository.findByIdAndProject_Id(taskId, projectId)
 				.orElseThrow(() -> new ResourceNotFoundException("Task"));
-		taskRepository.delete(task);
+	}
+
+	/**
+	 * New assignees must be members of the tenant. Keeping the current assignee unchanged
+	 * is always allowed, so a task assigned to someone who has since left the workspace
+	 * can still be edited without being forced to reassign it.
+	 */
+	private User resolveAssignee(UUID tenantId, UUID assigneeId, User currentAssignee) {
+		if (assigneeId == null) {
+			return null;
+		}
+		if (currentAssignee != null && Objects.equals(currentAssignee.getId(), assigneeId)) {
+			return currentAssignee;
+		}
+		if (!membershipRepository.existsByUser_IdAndTenant_Id(assigneeId, tenantId)) {
+			throw new IllegalArgumentException("Assignee must be a member of the tenant");
+		}
+		return userRepository.findById(assigneeId)
+				.orElseThrow(() -> new ResourceNotFoundException("User"));
+	}
+
+	private static String trimToNull(String value) {
+		if (value == null) {
+			return null;
+		}
+		String trimmed = value.trim();
+		return trimmed.isEmpty() ? null : trimmed;
 	}
 }

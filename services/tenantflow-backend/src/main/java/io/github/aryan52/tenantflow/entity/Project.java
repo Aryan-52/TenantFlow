@@ -2,6 +2,8 @@ package io.github.aryan52.tenantflow.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.GeneratedValue;
@@ -55,6 +57,19 @@ public class Project {
 	@Size(max = 2000)
 	@Column(length = 2000)
 	private String description;
+
+	@NotNull
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false, length = 32)
+	@Builder.Default
+	private ProjectStatus status = ProjectStatus.ACTIVE;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(
+			name = "created_by",
+			foreignKey = @ForeignKey(name = "fk_projects_created_by")
+	)
+	private User createdBy;
 
 	@Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "timestamp with time zone")
 	private Instant createdAt;

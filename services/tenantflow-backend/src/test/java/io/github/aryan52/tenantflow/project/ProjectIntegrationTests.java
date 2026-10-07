@@ -11,6 +11,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.aryan52.tenantflow.entity.Membership;
 import io.github.aryan52.tenantflow.entity.Project;
+import io.github.aryan52.tenantflow.entity.ProjectStatus;
+import io.github.aryan52.tenantflow.entity.Task;
+import io.github.aryan52.tenantflow.entity.TaskPriority;
+import io.github.aryan52.tenantflow.entity.TaskStatus;
 import io.github.aryan52.tenantflow.entity.Role;
 import io.github.aryan52.tenantflow.entity.Tenant;
 import io.github.aryan52.tenantflow.entity.User;
@@ -18,6 +22,7 @@ import io.github.aryan52.tenantflow.project.dto.CreateProjectRequest;
 import io.github.aryan52.tenantflow.project.dto.UpdateProjectRequest;
 import io.github.aryan52.tenantflow.repository.MembershipRepository;
 import io.github.aryan52.tenantflow.repository.ProjectRepository;
+import io.github.aryan52.tenantflow.repository.TaskRepository;
 import io.github.aryan52.tenantflow.repository.TenantRepository;
 import io.github.aryan52.tenantflow.repository.UserRepository;
 import io.github.aryan52.tenantflow.security.JwtService;
@@ -63,6 +68,9 @@ class ProjectIntegrationTests {
 	private ProjectRepository projectRepository;
 
 	@Autowired
+	private TaskRepository taskRepository;
+
+	@Autowired
 	private JwtService jwtService;
 
 	private User adminUser;
@@ -76,6 +84,7 @@ class ProjectIntegrationTests {
 
 	@BeforeEach
 	void setup() {
+		taskRepository.deleteAll();
 		projectRepository.deleteAll();
 		membershipRepository.deleteAll();
 		tenantRepository.deleteAll();
@@ -99,21 +108,25 @@ class ProjectIntegrationTests {
 
 	@Test
 	void adminCanCreateProject() throws Exception {
-		CreateProjectRequest request = new CreateProjectRequest("My Project", "Description");
+		CreateProjectRequest request = new CreateProjectRequest("My Project", "Description", null);
 
 		mockMvc.perform(post("/api/tenants/" + tenant.getId() + "/projects")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(objectMapper.writeValueAsString(request)))
 				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.name").value("My Project"));
+				.andExpect(jsonPath("$.name").value("My Project"))
+				.andExpect(jsonPath("$.status").value("ACTIVE"))
+				.andExpect(jsonPath("$.createdById").value(adminUser.getId().toString()))
+				.andExpect(jsonPath("$.createdByName").value("A"))
+				.andExpect(jsonPath("$.taskCount").value(0));
 
 		assertThat(projectRepository.countByTenant_Id(tenant.getId())).isEqualTo(1);
 	}
 
 	@Test
 	void memberCannotCreateProject() throws Exception {
-		CreateProjectRequest request = new CreateProjectRequest("My Project", "Description");
+		CreateProjectRequest request = new CreateProjectRequest("My Project", "Description", null);
 
 		mockMvc.perform(post("/api/tenants/" + tenant.getId() + "/projects")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
@@ -124,7 +137,7 @@ class ProjectIntegrationTests {
 
 	@Test
 	void crossTenantAccessBlocked() throws Exception {
-		CreateProjectRequest request = new CreateProjectRequest("My Project", "Description");
+		CreateProjectRequest request = new CreateProjectRequest("My Project", "Description", null);
 
 		mockMvc.perform(post("/api/tenants/" + tenant.getId() + "/projects")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + otherToken)
@@ -137,14 +150,15 @@ class ProjectIntegrationTests {
 	void adminCanUpdateProject() throws Exception {
 		Project project = projectRepository.save(Project.builder().tenant(tenant).name("Old").build());
 
-		UpdateProjectRequest request = new UpdateProjectRequest("New", "Desc");
+		UpdateProjectRequest request = new UpdateProjectRequest("New", "Desc", ProjectStatus.ON_HOLD);
 
 		mockMvc.perform(put("/api/tenants/" + tenant.getId() + "/projects/" + project.getId())
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(objectMapper.writeValueAsString(request)))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.name").value("New"));
+				.andExpect(jsonPath("$.name").value("New"))
+				.andExpect(jsonPath("$.status").value("ON_HOLD"));
 	}
 
 	@Test
@@ -172,5 +186,125 @@ class ProjectIntegrationTests {
 				.andExpect(status().isNoContent());
 
 		assertThat(projectRepository.findById(project.getId())).isEmpty();
+	}
+
+	@Test
+	void createProjectWithExplicitStatus() throws Exception {
+		CreateProjectRequest request = new CreateProjectRequest("Paused", null, ProjectStatus.ON_HOLD);
+
+		mockMvc.perform(post("/api/tenants/" + tenant.getId() + "/projects")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(request)))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.status").value("ON_HOLD"));
+	}
+
+	@Test
+	void updateWithoutStatusKeepsCurrentStatus() throws Exception {
+		Project project = projectRepository.save(Project.builder().tenant(tenant).name("Old").status(ProjectStatus.COMPLETED).build());
+
+		mockMvc.perform(put("/api/tenants/" + tenant.getId() + "/projects/" + project.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"name\":\"Renamed\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.name").value("Renamed"))
+				.andExpect(jsonPath("$.status").value("COMPLETED"));
+	}
+
+	@Test
+	void createProjectValidation() throws Exception {
+		mockMvc.perform(post("/api/tenants/" + tenant.getId() + "/projects")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"name\":\"   \"}"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.fieldErrors.name").exists());
+
+		mockMvc.perform(post("/api/tenants/" + tenant.getId() + "/projects")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"name\":\"Ok\",\"status\":\"BOGUS\"}"))
+				.andExpect(status().isBadRequest());
+
+		assertThat(projectRepository.countByTenant_Id(tenant.getId())).isZero();
+	}
+
+	@Test
+	void memberCannotUpdateOrDeleteProject() throws Exception {
+		Project project = projectRepository.save(Project.builder().tenant(tenant).name("P1").build());
+
+		mockMvc.perform(put("/api/tenants/" + tenant.getId() + "/projects/" + project.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(new UpdateProjectRequest("X", null, null))))
+				.andExpect(status().isForbidden());
+
+		mockMvc.perform(delete("/api/tenants/" + tenant.getId() + "/projects/" + project.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken))
+				.andExpect(status().isForbidden());
+
+		assertThat(projectRepository.findById(project.getId())).isPresent();
+	}
+
+	@Test
+	void listIncludesTaskCounts() throws Exception {
+		Project project = projectRepository.save(Project.builder().tenant(tenant).name("P1").build());
+		taskRepository.save(Task.builder().project(project).title("a").status(TaskStatus.TODO).priority(TaskPriority.LOW).build());
+		taskRepository.save(Task.builder().project(project).title("b").status(TaskStatus.DONE).priority(TaskPriority.LOW).build());
+
+		mockMvc.perform(get("/api/tenants/" + tenant.getId() + "/projects")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].taskCount").value(2))
+				.andExpect(jsonPath("$[0].completedTaskCount").value(1));
+
+		mockMvc.perform(get("/api/tenants/" + tenant.getId() + "/projects/" + project.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.taskCount").value(2))
+				.andExpect(jsonPath("$.completedTaskCount").value(1));
+	}
+
+	@Test
+	void deletingProjectRemovesItsTasks() throws Exception {
+		Project project = projectRepository.save(Project.builder().tenant(tenant).name("P1").build());
+		Task task = taskRepository.save(Task.builder().project(project).title("a").status(TaskStatus.TODO).priority(TaskPriority.LOW).build());
+
+		mockMvc.perform(delete("/api/tenants/" + tenant.getId() + "/projects/" + project.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+				.andExpect(status().isNoContent());
+
+		assertThat(projectRepository.findById(project.getId())).isEmpty();
+		assertThat(taskRepository.findById(task.getId())).isEmpty();
+	}
+
+	@Test
+	void projectOfAnotherTenantIsNotReachableThroughOwnTenant() throws Exception {
+		Project foreign = projectRepository.save(Project.builder().tenant(otherTenant).name("Secret").build());
+
+		// Admin of tenant 1 addressing tenant 2's project through tenant 1's path.
+		mockMvc.perform(get("/api/tenants/" + tenant.getId() + "/projects/" + foreign.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+				.andExpect(status().isNotFound());
+
+		mockMvc.perform(put("/api/tenants/" + tenant.getId() + "/projects/" + foreign.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(new UpdateProjectRequest("Hijacked", null, null))))
+				.andExpect(status().isNotFound());
+
+		mockMvc.perform(delete("/api/tenants/" + tenant.getId() + "/projects/" + foreign.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+				.andExpect(status().isNotFound());
+
+		// Admin of tenant 1 addressing tenant 2 directly.
+		mockMvc.perform(get("/api/tenants/" + otherTenant.getId() + "/projects")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+				.andExpect(status().isForbidden());
+
+		assertThat(projectRepository.findById(foreign.getId())).get()
+				.extracting(Project::getName).isEqualTo("Secret");
 	}
 }

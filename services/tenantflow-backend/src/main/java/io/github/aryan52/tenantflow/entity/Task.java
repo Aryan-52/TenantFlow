@@ -18,6 +18,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -74,6 +75,16 @@ public class Task {
 			foreignKey = @ForeignKey(name = "fk_tasks_assignee")
 	)
 	private User assignee;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(
+			name = "created_by",
+			foreignKey = @ForeignKey(name = "fk_tasks_created_by")
+	)
+	private User createdBy;
+
+	@Column(name = "due_date")
+	private LocalDate dueDate;
 
 	@Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "timestamp with time zone")
 	private Instant createdAt;
