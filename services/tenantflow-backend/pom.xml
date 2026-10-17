@@ -29,7 +29,7 @@
 	<properties>
 		<java.version>21</java.version>
 		<jjwt.version>0.12.6</jjwt.version>
-		<springdoc.version>3.0.3</springdoc.version>
+		<springdoc.version>3.1.1</springdoc.version>
 		<awssdk.version>2.42.13</awssdk.version>
 		<!-- JVM flags for "mvnw spring-boot:run". A property (not plugin <configuration>) so that
 		     -Dspring-boot.run.jvmArguments=... on the command line replaces it instead of being
