@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /app
 
 # Optional: bake an absolute API URL into the build (e.g. when NOT using the nginx
