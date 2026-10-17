@@ -204,6 +204,53 @@ Back up the attachment bucket with S3 versioning (or MinIO `mc mirror`); with
 restore can reference objects that were deleted after the backup, which then download as
 404, so keep bucket versioning retention at least as long as database backup retention.
 
+## Production deployment (Vercel + Render + Neon)
+
+The browser only ever talks to the Vercel domain. `frontend/vercel.json` forwards `/api/*`,
+`/oauth2/*` and `/login/oauth2/*` to the Render backend and sends every other path to
+`index.html` (React Router). Because API and sign-in share the frontend's origin, the
+`SameSite=Lax` refresh cookie and Google sign-in work without third-party cookies, and CORS
+is not involved.
+
+**Vercel** (project root directory: `frontend`). `vercel.json` sets the framework (Vite),
+`npm ci`, the build command `npm run vercel-build` and the output directory `dist`.
+`vercel-build` first runs `scripts/check-vercel-config.js`, which stops the deployment
+while the backend host in `vercel.json` is still `REPLACE-WITH-YOUR-RENDER-SERVICE`, or if
+the rewrites are out of order. Replace it with your Render service host. Leave
+`VITE_API_URL` unset (relative URLs).
+
+**Render** (Docker, root directory `services/tenantflow-backend`, health check path `/readyz`):
+
+| Variable | Value |
+|---|---|
+| `SPRING_PROFILES_ACTIVE` | `prod` |
+| `PORT` | `8080` (the port the image listens on) |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://<neon-host>/<db>?sslmode=require` (Neon's direct host, not `-pooler`) |
+| `SPRING_DATASOURCE_USERNAME` / `_PASSWORD` | Neon role |
+| `TENANTFLOW_JWT_SECRET` | new random value, 32+ characters |
+| `TENANTFLOW_CORS_ALLOWED_ORIGINS` | `https://<app>.vercel.app` |
+| `TENANTFLOW_PASSWORD_RESET_URL` | `https://<app>.vercel.app/reset-password?token={token}` |
+| `TENANTFLOW_OAUTH_FRONTEND_REDIRECT_URI` | `https://<app>.vercel.app/oauth-callback` |
+| `GOOGLE_OAUTH_REDIRECT_URI` | `https://<app>.vercel.app/login/oauth2/code/google` (with Google sign-in) |
+| `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` | optional; Google sign-in stays off without them |
+| `SERVER_TOMCAT_REMOTEIP_TRUSTED_PROXIES` | `.*` - see below |
+| `TENANTFLOW_CACHE_TYPE` / `TENANTFLOW_RATE_LIMIT_STORE` | `simple` / `memory` (single instance, no Redis) |
+| `TENANTFLOW_STORAGE_BUCKET`, `_ENDPOINT`, `_REGION`, `_ACCESS_KEY`, `_SECRET_KEY` | S3-compatible bucket (R2: region `auto`) |
+
+*Client addresses behind the proxy.* Requests reach Render from Vercel's servers, so without
+`SERVER_TOMCAT_REMOTEIP_TRUSTED_PROXIES=.*` every user shares Vercel's address in the per-IP
+sign-in limits and one person can block everyone's login
+(`ratelimit/ProxiedClientIpIntegrationTests`). With it, the address Vercel reports for the
+browser is used. Trade-off: someone calling the `onrender.com` URL directly can choose the
+address they report, so per-IP limits can be evaded there. With your own API domain instead
+(`VITE_API_URL=https://api.example.com`, frontend on `app.example.com`), drop the proxy
+setting and this trade-off disappears.
+
+*Storage.* Under `prod` the backend refuses to start with storage that would lose files or
+an incomplete S3 setup, and names the setting to fix (`StorageProperties`). Render's own
+disk is wiped on every deploy; `filesystem` is only accepted with a persistent disk and
+`TENANTFLOW_STORAGE_FILESYSTEM_PERSISTENT=true`.
+
 ## Production deployment notes (AWS example)
 
 * **Compute:** run the backend image on ECS Fargate (or EKS), at least 2 tasks behind an

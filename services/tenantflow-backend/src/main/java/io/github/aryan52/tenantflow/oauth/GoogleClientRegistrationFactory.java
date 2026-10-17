@@ -25,6 +25,7 @@ public final class GoogleClientRegistrationFactory {
 		ClientRegistration registration = CommonOAuth2Provider.GOOGLE.getBuilder(REGISTRATION_ID)
 				.clientId(properties.clientId())
 				.clientSecret(properties.clientSecret())
+				.redirectUri(properties.redirectUri())
 				.build();
 		return new InMemoryClientRegistrationRepository(registration);
 	}

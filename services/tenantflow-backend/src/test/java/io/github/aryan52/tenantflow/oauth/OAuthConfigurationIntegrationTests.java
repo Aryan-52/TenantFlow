@@ -1,5 +1,6 @@
 package io.github.aryan52.tenantflow.oauth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -105,8 +106,12 @@ class OAuthConfigurationIntegrationTests {
 
 		@Test
 		void applicationStartsAndGoogleLoginEndpointRedirectsToGoogle() throws Exception {
-			mockMvc.perform(get("/oauth2/authorization/google"))
-					.andExpect(status().is3xxRedirection());
+			String location = mockMvc.perform(get("/oauth2/authorization/google"))
+					.andExpect(status().is3xxRedirection())
+					.andReturn().getResponse().getHeader("Location");
+			// No explicit callback configured: derived from the request (local development).
+			assertThat(location).startsWith("https://accounts.google.com/")
+					.contains("redirect_uri=http://localhost/login/oauth2/code/google");
 		}
 
 		@Test
@@ -122,6 +127,38 @@ class OAuthConfigurationIntegrationTests {
 							.contentType(MediaType.APPLICATION_JSON)
 							.content(objectMapper.writeValueAsString(request)))
 					.andExpect(status().isOk());
+		}
+	}
+
+	@Nested
+	@SpringBootTest(properties = {
+			"spring.datasource.url=jdbc:h2:mem:tenantflow_oauth_proxied;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
+			"spring.datasource.driver-class-name=org.h2.Driver",
+			"spring.datasource.username=sa",
+			"spring.datasource.password=",
+			"spring.jpa.hibernate.ddl-auto=create-drop",
+			"spring.flyway.enabled=false",
+			"tenantflow.jwt.secret=test-oauth-off-secret-test-oauth-off-secret",
+			"tenantflow.jwt.expiration-seconds=3600",
+			"tenantflow.oauth.google.client-id=test-client-id.apps.googleusercontent.com",
+			"tenantflow.oauth.google.client-secret=test-client-secret",
+			"tenantflow.oauth.google.redirect-uri=https://app.example.test/login/oauth2/code/google"
+	})
+	@AutoConfigureMockMvc
+	class BehindTheFrontendProxy {
+
+		@Autowired
+		private MockMvc mockMvc;
+
+		@Test
+		void googleIsSentThePublicCallbackOnTheFrontendDomain() throws Exception {
+			// The request reaches the backend under its own (internal) host; the callback Google
+			// receives must still be the public, proxied address.
+			String location = mockMvc.perform(get("/oauth2/authorization/google").header("Host", "tenantflow-api.internal"))
+					.andExpect(status().is3xxRedirection())
+					.andReturn().getResponse().getHeader("Location");
+			assertThat(location).contains("redirect_uri=https://app.example.test/login/oauth2/code/google")
+					.doesNotContain("tenantflow-api.internal");
 		}
 	}
 }
