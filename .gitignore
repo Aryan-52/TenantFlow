@@ -46,3 +46,5 @@ docker-data/
 # ===========================
 *.tmp
 *.swp
+# .claude/launch.json (the two dev servers) is versioned and must never contain secrets:
+# those belong in the git-ignored .env file (see docs/OPERATIONS.md, "Local development").

@@ -67,6 +67,10 @@ public class Membership {
 	@Column(nullable = false, length = 32)
 	private Role role;
 
+	/** Open tasks this member can take on per week (V16); null = not set. Unit: tasks/week. */
+	@Column(name = "weekly_capacity")
+	private Integer weeklyCapacity;
+
 	@Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "timestamp with time zone")
 	private Instant createdAt;
 

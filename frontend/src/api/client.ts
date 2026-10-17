@@ -3,7 +3,7 @@ import axios from 'axios';
 // In production (Docker), requests go to a same-origin relative URL and nginx
 // reverse-proxies /api/* to the backend container (see frontend/nginx.conf).
 // For local `npm run dev` without that proxy, set VITE_API_URL (see .env.development)
-// to point straight at the backend, e.g. http://localhost:8081.
+// to point straight at the backend, e.g. http://localhost:8095.
 const baseURL = import.meta.env.VITE_API_URL || '';
 
 // Needed so the browser sends/receives the HttpOnly "remember me" refresh cookie
@@ -25,7 +25,8 @@ client.interceptors.request.use((config) => {
 // A separate, bare instance for the refresh call itself - it must never go through the
 // interceptors above (no Authorization header to attach, and a 401 here must not trigger
 // another refresh attempt).
-const refreshClient = axios.create({ baseURL, withCredentials: true });
+// Timeout: a hung refresh must never keep the app on its start-up screen.
+const refreshClient = axios.create({ baseURL, withCredentials: true, timeout: 15_000 });
 
 let refreshInFlight: Promise<string | null> | null = null;
 

@@ -1,5 +1,9 @@
 package io.github.aryan52.tenantflow.passwordreset;
 
+import io.github.aryan52.tenantflow.audit.AuditAction;
+import io.github.aryan52.tenantflow.audit.AuditEvent.Outcome;
+import io.github.aryan52.tenantflow.audit.AuditService;
+import io.github.aryan52.tenantflow.audit.AuditService.Entry;
 import io.github.aryan52.tenantflow.config.PasswordResetProperties;
 import io.github.aryan52.tenantflow.email.EmailService;
 import io.github.aryan52.tenantflow.entity.PasswordResetToken;
@@ -31,6 +35,7 @@ public class PasswordResetService {
 	private final PasswordResetProperties passwordResetProperties;
 	private final EmailService emailService;
 	private final RefreshTokenService refreshTokenService;
+	private final AuditService auditService;
 
 	/** Always completes the same way whether or not the email belongs to an account - the
 	 * controller returns an identical generic response either way. */
@@ -57,6 +62,9 @@ public class PasswordResetService {
 		passwordResetTokenRepository.save(token);
 
 		emailService.sendPasswordResetEmail(user.getEmail(), passwordResetProperties.buildResetUrl(rawToken));
+		// The token / link itself is never recorded.
+		auditService.record(Entry.success(AuditAction.AUTH_PASSWORD_RESET_REQUESTED, null, "USER", user.getId(), null),
+				user.getId(), user.getEmail());
 	}
 
 	@Transactional
@@ -85,6 +93,8 @@ public class PasswordResetService {
 		// Sign out every device: existing access JWTs stop working (token_version bump) and
 		// every "remember me" persistent session is revoked.
 		refreshTokenService.revokeAllForUser(user.getId());
+		auditService.record(Entry.success(AuditAction.AUTH_PASSWORD_RESET_COMPLETED, null, "USER", user.getId(),
+				"all sessions revoked"), user.getId(), user.getEmail());
 	}
 
 	private String normalizeEmail(String email) {

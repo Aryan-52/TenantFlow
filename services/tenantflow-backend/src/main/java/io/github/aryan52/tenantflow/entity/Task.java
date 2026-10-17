@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -86,21 +87,73 @@ public class Task {
 	@Column(name = "due_date")
 	private LocalDate dueDate;
 
+	/** When work is planned to start (V16). Never inferred: null until someone sets it. */
+	@Column(name = "start_date")
+	private LocalDate startDate;
+
+	/** Optional milestone of the same project (V16). A plain id so deleting a milestone only clears it. */
+	@Column(name = "milestone_id", columnDefinition = "uuid")
+	private UUID milestoneId;
+
+	/** Recurrence rule (V16), copied to each occurrence; null = not recurring. */
+	@Enumerated(EnumType.STRING)
+	@Column(name = "recurrence_frequency", length = 16)
+	private RecurrenceFrequency recurrenceFrequency;
+
+	@Column(name = "recurrence_interval")
+	private Integer recurrenceInterval;
+
+	/** WEEKLY only: bit 0 = Monday ... bit 6 = Sunday; null/0 = the due date's weekday. */
+	@Column(name = "recurrence_weekdays")
+	private Short recurrenceWeekdays;
+
+	@Column(name = "recurrence_until")
+	private LocalDate recurrenceUntil;
+
+	/** Shared by every occurrence of one recurring task. */
+	@Column(name = "series_id", columnDefinition = "uuid")
+	private UUID seriesId;
+
 	@Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "timestamp with time zone")
 	private Instant createdAt;
 
 	@Column(name = "updated_at", nullable = false, columnDefinition = "timestamp with time zone")
 	private Instant updatedAt;
 
+	/**
+	 * When the task was moved to Done (V15); null while open, and null for tasks completed
+	 * before completion times were recorded. Maintained by the lifecycle hooks below so every
+	 * code path that changes the status keeps it consistent.
+	 */
+	@Column(name = "completed_at", columnDefinition = "timestamp with time zone")
+	private Instant completedAt;
+
+	/** Optimistic-locking version (V9). Incremented by Hibernate on every update. */
+	@Version
+	@Column(nullable = false)
+	private long version;
+
 	@PrePersist
 	void onCreate() {
-		Instant now = Instant.now();
+		Instant now = io.github.aryan52.tenantflow.common.Timestamps.now();
 		createdAt = now;
 		updatedAt = now;
+		syncCompletedAt(now);
 	}
 
 	@PreUpdate
 	void onUpdate() {
-		updatedAt = Instant.now();
+		updatedAt = io.github.aryan52.tenantflow.common.Timestamps.now();
+		syncCompletedAt(updatedAt);
+	}
+
+	private void syncCompletedAt(Instant now) {
+		if (status == TaskStatus.DONE) {
+			if (completedAt == null) {
+				completedAt = now;
+			}
+		} else {
+			completedAt = null;
+		}
 	}
 }

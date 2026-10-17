@@ -14,13 +14,19 @@ public record ProjectResponse(
 		ProjectStatus status,
 		UUID createdById,
 		String createdByName,
+		UUID ownerId,
+		String ownerName,
 		long taskCount,
 		long completedTaskCount,
 		Instant createdAt,
-		Instant updatedAt
+		Instant updatedAt,
+		long version,
+		java.time.LocalDate startDate,
+		java.time.LocalDate targetDate
 ) {
 	public static ProjectResponse from(Project project, long taskCount, long completedTaskCount) {
 		User createdBy = project.getCreatedBy();
+		User owner = project.getOwner();
 		return new ProjectResponse(
 				project.getId(),
 				project.getTenant().getId(),
@@ -29,10 +35,15 @@ public record ProjectResponse(
 				project.getStatus(),
 				createdBy != null ? createdBy.getId() : null,
 				createdBy != null ? createdBy.getName() : null,
+				owner != null ? owner.getId() : null,
+				owner != null ? owner.getName() : null,
 				taskCount,
 				completedTaskCount,
 				project.getCreatedAt(),
-				project.getUpdatedAt()
+				project.getUpdatedAt(),
+				project.getVersion(),
+				project.getStartDate(),
+				project.getTargetDate()
 		);
 	}
 }

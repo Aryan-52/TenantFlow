@@ -1,0 +1,175 @@
+# Continuous integration: backend tests (incl. PostgreSQL/Redis/MinIO via Testcontainers),
+# Flyway migration validation, frontend lint/test/build, dependency review and Trivy
+# scanning of the source tree and both container images.
+#
+# Every third-party action is pinned to a full commit SHA (tag in the trailing comment);
+# update them deliberately, e.g. with Dependabot. No secrets are used.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: jobs only read the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '21'
+  NODE_VERSION: '22'
+  TRIVY_VERSION: 'v0.74.0'
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: services/tenantflow-backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      # Docker is available on the runner, so the Testcontainers suites (PostgreSQL
+      # migrations, Redis, MinIO, full-text search) run instead of being skipped.
+      - name: Build and test
+        run: ./mvnw -B -ntp verify
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-test-reports
+          path: services/tenantflow-backend/target/surefire-reports/
+          retention-days: 7
+
+  migrations:
+    name: Migration validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Applied migrations are immutable: editing, renaming or deleting one breaks Flyway's
+      # checksum validation on every existing database. Add a new V<n>__*.sql instead.
+      - name: Existing migrations are unchanged
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=$(git diff --name-only --diff-filter=MDR "$BASE_SHA"...HEAD -- services/tenantflow-backend/src/main/resources/db/migration)
+          if [ -n "$changed" ]; then
+            echo "::error::Existing Flyway migrations were modified, renamed or deleted:"
+            echo "$changed"
+            exit 1
+          fi
+      - name: Migration versions are unique
+        run: |
+          dupes=$(ls services/tenantflow-backend/src/main/resources/db/migration | sed -n 's/^V\([0-9]*\)__.*/\1/p' | sort | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "::error::Duplicate migration versions: $dupes"
+            exit 1
+          fi
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      # V1 -> latest on a clean PostgreSQL 17, the V7-with-data upgrade path, and
+      # Hibernate schema validation against the migrated schema.
+      - name: Apply migrations to disposable PostgreSQL
+        working-directory: services/tenantflow-backend
+        run: ./mvnw -B -ntp test -Dtest='FlywayPostgresMigrationTests,PostgresSchemaValidationTests' -Dsurefire.failIfNoSpecifiedTests=true
+
+  frontend:
+    name: Frontend lint, test and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Blocks pull requests that add dependencies with known high/critical vulnerabilities.
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: high
+
+  security-scan:
+    name: Trivy (source and images)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Vulnerable dependencies (pom.xml, package-lock.json), committed secrets and
+      # Dockerfile/Compose misconfigurations.
+      - name: Scan source tree
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          trivyignores: .trivyignore
+      - name: Build backend image
+        run: docker build -t tenantflow-backend:ci services/tenantflow-backend
+      - name: Build frontend image
+        run: docker build -t tenantflow-frontend:ci frontend
+      - name: Scan backend image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: image
+          image-ref: tenantflow-backend:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          trivyignores: .trivyignore
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          scan-type: image
+          image-ref: tenantflow-frontend:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          trivyignores: .trivyignore

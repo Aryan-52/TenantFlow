@@ -1,128 +1,292 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTenant } from '../../contexts/TenantContext';
-import { useAuth } from '../../contexts/AuthContext';
 import {
-  LayoutDashboard,
-  FolderKanban,
-  CheckSquare,
-  Users,
-  Settings,
-  User,
-  LogOut,
-  ChevronsUpDown,
+  Activity,
+  BarChart3,
+  Bell,
+  CalendarDays,
   Check,
-  Building2,
+  ChevronDown,
+  ChevronsUpDown,
+  FileStack,
+  FileText,
+  FolderKanban,
+  SquareChartGantt,
+  Inbox,
+  LayoutDashboard,
+  ListChecks,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Settings,
+  SlidersHorizontal,
+  Sun,
+  User,
+  Users,
+  Workflow,
+  Briefcase,
 } from 'lucide-react';
-import { Button } from '../ui/Button';
-import { Dropdown, DropdownItem, DropdownLabel } from '../ui/Dropdown';
+import { Dropdown, DropdownDivider, DropdownItem, DropdownLabel } from '../ui/Dropdown';
+import { CreateWorkspaceModal } from './CreateWorkspaceModal';
+import { SearchInput } from '../ui/SearchInput';
+import { BrandMark } from './BrandMark';
+import { initials, tintStyle } from '../ui/visual';
 
 interface SidebarProps {
   mobileOpen: boolean;
   onNavigate: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }
 
-export const Sidebar = ({ mobileOpen, onNavigate }: SidebarProps) => {
+interface NavItem {
+  name: string;
+  icon: ReactNode;
+  path: string;
+  /** Extra path prefixes that also mark this item active. */
+  also?: string[];
+}
+
+interface NavGroup {
+  id: string;
+  label: string;
+  items: NavItem[];
+}
+
+const ROLE_LABEL: Record<string, string> = { OWNER: 'Owner', ADMIN: 'Admin', MEMBER: 'Member' };
+const GROUPS_KEY = 'tf.navGroupsClosed';
+const SEARCH_THRESHOLD = 6;
+
+const readClosed = (): string[] => {
+  try {
+    const v = JSON.parse(localStorage.getItem(GROUPS_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+};
+
+/** The navigation rail: workspace switcher, grouped destinations and collapse control. */
+export const Sidebar = ({ mobileOpen, onNavigate, collapsed, onToggleCollapsed }: SidebarProps) => {
   const { currentTenant, tenants, setCurrentTenantId } = useTenant();
-  const { logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
+  const [closed, setClosed] = useState<string[]>(readClosed);
+  const [workspaceQuery, setWorkspaceQuery] = useState('');
 
-  const handleTenantChange = (id: string) => {
+  const switchTo = (id: string) => {
+    setWorkspaceQuery('');
+    if (id === currentTenant?.id) return;
     setCurrentTenantId(id);
+    // Workspace-scoped pages remount under the new id, so nothing from the old one stays.
     navigate(`/tenants/${id}/dashboard`);
+    onNavigate();
   };
 
-  const navItems: { name: string; icon: ReactNode; path: string | null }[] = [
-    { name: 'Dashboard', icon: <LayoutDashboard size={18} />, path: currentTenant ? `/tenants/${currentTenant.id}/dashboard` : null },
-    { name: 'Projects', icon: <FolderKanban size={18} />, path: currentTenant ? `/tenants/${currentTenant.id}/projects` : null },
-    { name: 'Tasks', icon: <CheckSquare size={18} />, path: currentTenant ? `/tenants/${currentTenant.id}/tasks` : null },
-    { name: 'Members', icon: <Users size={18} />, path: currentTenant ? `/tenants/${currentTenant.id}/members` : null },
+  const toggleGroup = (id: string) => {
+    setClosed((prev) => {
+      const next = prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id];
+      try {
+        localStorage.setItem(GROUPS_KEY, JSON.stringify(next));
+      } catch {
+        // Not persisted when storage is unavailable.
+      }
+      return next;
+    });
+  };
+
+  const t = currentTenant?.id;
+  const isManager = currentTenant?.myRole === 'ADMIN' || currentTenant?.myRole === 'OWNER';
+
+  // Only real, working destinations; nothing is shown as a placeholder.
+  const groups: NavGroup[] = [
+    ...(t
+      ? [
+          {
+            id: 'workspace',
+            label: 'Workspace',
+            items: [
+              { name: 'Overview', icon: <LayoutDashboard size={16} />, path: `/tenants/${t}/dashboard` },
+              { name: 'My Work', icon: <Sun size={16} />, path: `/tenants/${t}/my-work` },
+              { name: 'Inbox', icon: <Inbox size={16} />, path: '/notifications' },
+              { name: 'Projects', icon: <FolderKanban size={16} />, path: `/tenants/${t}/projects` },
+              { name: 'All tasks', icon: <ListChecks size={16} />, path: `/tenants/${t}/tasks` },
+              { name: 'Portfolio', icon: <Briefcase size={16} />, path: `/tenants/${t}/portfolio` },
+              { name: 'Planning', icon: <SquareChartGantt size={16} />, path: `/tenants/${t}/planning` },
+              { name: 'Calendar', icon: <CalendarDays size={16} />, path: `/tenants/${t}/calendar` },
+              { name: 'Analytics', icon: <BarChart3 size={16} />, path: `/tenants/${t}/analytics` },
+            ],
+          },
+          {
+            id: 'collaboration',
+            label: 'Collaboration',
+            items: [
+              { name: 'Team', icon: <Users size={16} />, path: `/tenants/${t}/members` },
+              { name: 'Documents', icon: <FileStack size={16} />, path: `/tenants/${t}/documents` },
+              { name: 'Activity', icon: <Activity size={16} />, path: `/tenants/${t}/activity` },
+            ],
+          },
+          {
+            id: 'manage',
+            label: 'Manage',
+            items: [
+              { name: 'Automations', icon: <Workflow size={16} />, path: `/tenants/${t}/automations` },
+              { name: 'Reports', icon: <FileText size={16} />, path: `/tenants/${t}/reports` },
+              ...(isManager ? [{ name: 'Workspace settings', icon: <Settings size={16} />, path: `/tenants/${t}/settings` }] : []),
+            ],
+          },
+        ]
+      : []),
+    {
+      id: 'personal',
+      label: 'Personal',
+      items: [
+        ...(t ? [] : [{ name: 'Inbox', icon: <Bell size={16} />, path: '/notifications' }]),
+        { name: 'Profile', icon: <User size={16} />, path: '/profile' },
+        { name: 'Preferences', icon: <SlidersHorizontal size={16} />, path: '/preferences' },
+      ],
+    },
   ];
 
-  if (currentTenant && (currentTenant.myRole === 'ADMIN' || currentTenant.myRole === 'OWNER')) {
-    navItems.push({ name: 'Settings', icon: <Settings size={18} />, path: `/tenants/${currentTenant.id}/settings` });
-  }
+  const isActive = (item: NavItem) =>
+    [item.path, ...(item.also ?? [])].some((p) => location.pathname === p || location.pathname.startsWith(p + '/'));
 
-  const isActive = (path: string | null) => {
-    if (!path) return false;
-    return location.pathname === path || location.pathname.startsWith(path + '/');
+  const renderLink = (item: NavItem) => {
+    const active = isActive(item);
+    return (
+      <Link
+        key={item.path}
+        to={item.path}
+        className={`sidebar-link ${active ? 'active' : ''}`.trim()}
+        aria-current={active ? 'page' : undefined}
+        onClick={onNavigate}
+        data-tooltip={item.name}
+        data-tooltip-side="right"
+        aria-label={collapsed ? item.name : undefined}
+      >
+        {item.icon}
+        <span className="sidebar-link-label">{item.name}</span>
+      </Link>
+    );
   };
 
+  const q = workspaceQuery.trim().toLowerCase();
+  const visibleWorkspaces = q ? tenants.filter((w) => w.name.toLowerCase().includes(q)) : tenants;
+
   return (
-    <aside className={`sidebar-container ${mobileOpen ? 'open' : ''}`.trim()}>
+    <aside className={`sidebar-container ${mobileOpen ? 'open' : ''}`.trim()} aria-label="Main navigation">
       <div className="sidebar-header">
-        <Link to="/" className="sidebar-brand" style={{ textDecoration: 'none' }} onClick={onNavigate}>
-          <span className="sidebar-brand-mark">T</span>
-          TenantFlow
+        <Link to="/" className="sidebar-brand" onClick={onNavigate} aria-label="TenantFlow home">
+          <BrandMark className="sidebar-brand-mark" />
+          <span className="sidebar-brand-name">TenantFlow</span>
         </Link>
       </div>
 
-      <div className="p-4 border-b">
-        <p className="text-xs text-muted font-medium mb-2 uppercase" style={{ letterSpacing: '0.04em' }}>
-          Workspace
-        </p>
+      <div className="workspace-switcher">
         {tenants.length > 0 ? (
           <Dropdown
             align="left"
-            trigger={({ toggle }) => (
+            trigger={({ open, toggle }) => (
               <button
                 type="button"
                 onClick={toggle}
-                className="flex items-center justify-between w-full gap-2 px-3 py-2 rounded-md border text-sm font-medium"
-                style={{ backgroundColor: 'var(--bg-subtle)' }}
+                className="workspace-trigger"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                aria-label={`Workspace: ${currentTenant?.name ?? 'none selected'}${currentTenant ? `, your role ${ROLE_LABEL[currentTenant.myRole] ?? currentTenant.myRole}` : ''}. Switch workspace`}
+                data-tooltip={currentTenant?.name ?? 'Workspace'}
+                data-tooltip-side="right"
               >
-                <span className="flex items-center gap-2 truncate">
-                  <Building2 size={15} className="text-muted flex-shrink-0" />
-                  <span className="truncate">{currentTenant?.name ?? 'Select workspace'}</span>
+                <span className="workspace-mark" style={tintStyle(currentTenant?.id ?? 'none')} aria-hidden="true">
+                  {initials(currentTenant?.name ?? '?')}
                 </span>
-                <ChevronsUpDown size={14} className="text-muted flex-shrink-0" />
+                <span className="workspace-text">
+                  <span className="workspace-name">{currentTenant?.name ?? 'Select workspace'}</span>
+                  {currentTenant && <span className="workspace-role">{ROLE_LABEL[currentTenant.myRole] ?? currentTenant.myRole}</span>}
+                </span>
+                <ChevronsUpDown size={14} className="flex-shrink-0 workspace-chevron" aria-hidden="true" />
               </button>
             )}
           >
-            <DropdownLabel>Your workspaces</DropdownLabel>
-            {tenants.map((t) => (
-              <DropdownItem key={t.id} active={t.id === currentTenant?.id} onClick={() => handleTenantChange(t.id)}>
-                <span className="flex-1 truncate">{t.name}</span>
-                {t.id === currentTenant?.id && <Check size={14} />}
+            <div className="workspace-menu">
+              <DropdownLabel>Workspaces</DropdownLabel>
+              {tenants.length >= SEARCH_THRESHOLD && (
+                <div className="workspace-search" onClick={(e) => e.stopPropagation()}>
+                  <SearchInput value={workspaceQuery} onChange={setWorkspaceQuery} placeholder="Find a workspace" />
+                </div>
+              )}
+              <div className="workspace-list">
+                {visibleWorkspaces.map((w) => (
+                  <DropdownItem key={w.id} active={w.id === currentTenant?.id} onClick={() => switchTo(w.id)}>
+                    <span className="workspace-mark workspace-mark-sm" style={tintStyle(w.id)} aria-hidden="true">{initials(w.name)}</span>
+                    <span className="flex-1 truncate">{w.name}</span>
+                    <span className="workspace-option-role">{ROLE_LABEL[w.myRole] ?? w.myRole}</span>
+                    {w.id === currentTenant?.id && <Check size={14} aria-label="Current workspace" />}
+                  </DropdownItem>
+                ))}
+                {visibleWorkspaces.length === 0 && <p className="text-xs text-muted px-3 py-2">No workspace matches.</p>}
+              </div>
+              <DropdownDivider />
+              <DropdownItem icon={<Plus size={15} />} onClick={() => setCreating(true)}>
+                New workspace
               </DropdownItem>
-            ))}
+              {t && isManager && (
+                <DropdownItem icon={<Settings size={15} />} onClick={() => navigate(`/tenants/${t}/settings`)}>
+                  Workspace settings
+                </DropdownItem>
+              )}
+            </div>
           </Dropdown>
         ) : (
-          <p className="text-muted text-sm">No workspace yet</p>
+          <button type="button" className="workspace-trigger" onClick={() => setCreating(true)}>
+            <Plus size={15} aria-hidden="true" />
+            <span className="workspace-text"><span className="workspace-name">Create a workspace</span></span>
+          </button>
         )}
       </div>
 
-      <nav className="sidebar-content">
-        {navItems.map((item) =>
-          item.path ? (
-            <Link key={item.name} to={item.path} className={`sidebar-link ${isActive(item.path) ? 'active' : ''}`.trim()} onClick={onNavigate}>
-              {item.icon}
-              {item.name}
-            </Link>
-          ) : (
-            <span key={item.name} className="sidebar-link" style={{ opacity: 0.45, cursor: 'not-allowed' }}>
-              {item.icon}
-              {item.name}
-            </span>
-          )
-        )}
+      <nav className="sidebar-content" aria-label="Sections">
+        {groups.map((g) => {
+          const open = !closed.includes(g.id);
+          const containsActive = g.items.some(isActive);
+          return (
+            <div className={`nav-group ${g.id === 'workspace' ? '' : 'is-secondary'}`.trim()} key={g.id}>
+              <button
+                type="button"
+                className="nav-group-toggle"
+                aria-expanded={open || containsActive}
+                aria-controls={`nav-${g.id}`}
+                onClick={() => toggleGroup(g.id)}
+              >
+                <ChevronDown size={12} aria-hidden="true" />
+                {g.label}
+              </button>
+              {/* A group holding the current page never hides it. */}
+              <div id={`nav-${g.id}`} className="nav-group-items" hidden={!open && !containsActive}>
+                {g.items.map(renderLink)}
+              </div>
+            </div>
+          );
+        })}
       </nav>
 
-      <div className="sidebar-footer">
-        <Link
-          to="/profile"
-          className={`sidebar-link mb-1 ${location.pathname === '/profile' ? 'active' : ''}`.trim()}
-          onClick={onNavigate}
+      <div className="sidebar-footer sidebar-collapse-row">
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm sidebar-collapse"
+          onClick={onToggleCollapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-pressed={collapsed}
+          data-tooltip={collapsed ? 'Expand sidebar' : undefined}
+          data-tooltip-side="right"
         >
-          <User size={18} />
-          Profile
-        </Link>
-        <Button variant="ghost" fullWidth onClick={logout} style={{ justifyContent: 'flex-start' }}>
-          <LogOut size={18} />
-          Sign Out
-        </Button>
+          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          <span className="sidebar-collapse-label">Collapse</span>
+        </button>
       </div>
+      <CreateWorkspaceModal isOpen={creating} onClose={() => setCreating(false)} />
     </aside>
   );
 };

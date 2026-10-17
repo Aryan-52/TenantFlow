@@ -1,5 +1,9 @@
 package io.github.aryan52.tenantflow.refreshtoken;
 
+import io.github.aryan52.tenantflow.audit.AuditAction;
+import io.github.aryan52.tenantflow.audit.AuditEvent.Outcome;
+import io.github.aryan52.tenantflow.audit.AuditService;
+import io.github.aryan52.tenantflow.audit.AuditService.Entry;
 import io.github.aryan52.tenantflow.config.RefreshTokenProperties;
 import io.github.aryan52.tenantflow.entity.RefreshToken;
 import io.github.aryan52.tenantflow.entity.User;
@@ -31,6 +35,7 @@ public class RefreshTokenService {
 	private final UserRepository userRepository;
 	private final RefreshTokenProperties refreshTokenProperties;
 	private final RefreshTokenRevocationHelper revocationHelper;
+	private final AuditService auditService;
 
 	public record RotationResult(User user, String rawToken) {
 	}
@@ -61,6 +66,9 @@ public class RefreshTokenService {
 			// transaction that commits independently, rather than being rolled back when
 			// rotate() throws InvalidRefreshTokenException.
 			revocationHelper.revokeAllForUser(existing.getUserId());
+			auditService.recordIndependently(Entry.of(AuditAction.AUTH_REFRESH_TOKEN_REUSE_DETECTED, Outcome.DENIED, null,
+					"USER", existing.getUserId(), "revoked token presented again; all sessions revoked"),
+					existing.getUserId(), null);
 			throw new InvalidRefreshTokenException();
 		}
 

@@ -1,5 +1,12 @@
 package io.github.aryan52.tenantflow.tenant;
 
+import io.github.aryan52.tenantflow.activity.ActivityEventRepository;
+import io.github.aryan52.tenantflow.attachment.AttachmentService;
+import io.github.aryan52.tenantflow.audit.AuditAction;
+import io.github.aryan52.tenantflow.notification.NotificationRepository;
+import io.github.aryan52.tenantflow.audit.AuditService;
+import io.github.aryan52.tenantflow.audit.AuditService.Entry;
+import io.github.aryan52.tenantflow.cache.TenantCacheInvalidator;
 import io.github.aryan52.tenantflow.entity.Membership;
 import io.github.aryan52.tenantflow.entity.Role;
 import io.github.aryan52.tenantflow.entity.Tenant;
@@ -27,6 +34,14 @@ public class TenantService {
 	private final TenantRepository tenantRepository;
 	private final MembershipRepository membershipRepository;
 	private final UserRepository userRepository;
+	private final AuditService auditService;
+	private final TenantCacheInvalidator cacheInvalidator;
+	private final ActivityEventRepository activityEventRepository;
+	private final NotificationRepository notificationRepository;
+	private final io.github.aryan52.tenantflow.automation.AutomationRunRepository automationRunRepository;
+	private final io.github.aryan52.tenantflow.automation.AutomationRuleRepository automationRuleRepository;
+	private final io.github.aryan52.tenantflow.planning.TaskDependencyRepository dependencyRepository;
+	private final AttachmentService attachmentService;
 
 	@Transactional
 	public TenantResponse createTenant(CreateTenantRequest request, UUID userId) {
@@ -49,7 +64,9 @@ public class TenantService {
 					.user(user)
 					.role(Role.OWNER)
 					.build();
-			membershipRepository.save(membership);
+			membershipRepository.saveAndFlush(membership);
+			auditService.record(Entry.success(AuditAction.WORKSPACE_CREATED, tenant.getId(), "WORKSPACE", tenant.getId(),
+					"slug=" + tenant.getSlug()));
 
 			return toResponse(tenant, Role.OWNER);
 		} catch (DataIntegrityViolationException ex) {
@@ -81,8 +98,12 @@ public class TenantService {
 		Tenant tenant = tenantRepository.findById(tenantId)
 				.orElseThrow(() -> new ResourceNotFoundException("Tenant"));
 
+		String previousName = tenant.getName();
 		tenant.setName(request.name().trim());
 		tenant = tenantRepository.save(tenant);
+		if (!previousName.equals(tenant.getName())) {
+			auditService.record(Entry.success(AuditAction.WORKSPACE_UPDATED, tenantId, "WORKSPACE", tenantId, "name changed"));
+		}
 
 		Role myRole = membershipRepository.findByUser_IdAndTenant_Id(userId, tenantId)
 				.map(Membership::getRole)
@@ -97,8 +118,19 @@ public class TenantService {
 				.orElseThrow(() -> new ResourceNotFoundException("Tenant"));
 		
 		List<Membership> memberships = membershipRepository.findByTenant_Id(tenantId);
+		// Explicit (not only ON DELETE CASCADE) so behaviour is the same on every database.
+		notificationRepository.deleteAllByTenantId(tenantId);
+		attachmentService.deleteAllForTenant(tenantId);
+		activityEventRepository.deleteAllByTenantId(tenantId);
+		automationRunRepository.deleteAllByTenantId(tenantId);
+		automationRuleRepository.deleteAllByTenantId(tenantId);
+		dependencyRepository.deleteAll(dependencyRepository.findByTenantId(tenantId));
 		membershipRepository.deleteAll(memberships);
 		tenantRepository.delete(tenant);
+		cacheInvalidator.invalidate(tenantId);
+		// The audit row has no foreign key to the tenant, so it outlives the deletion.
+		auditService.record(Entry.success(AuditAction.WORKSPACE_DELETED, tenantId, "WORKSPACE", tenantId,
+				"slug=" + tenant.getSlug() + " members=" + memberships.size()));
 	}
 
 	private TenantResponse toResponse(Tenant tenant, Role myRole) {

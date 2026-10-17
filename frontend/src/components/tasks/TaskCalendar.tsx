@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
-import { CalendarX2, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { CalendarDays, CalendarX2, ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { useClickOutside } from '../../hooks/useClickOutside';
 import type { Task } from '../../api/work';
 import { Button } from '../ui/Button';
 import { PriorityBadge, StatusBadge } from '../ui/Badge';
-import { addDays, compareByDueThenPriority, dueState, toDateKey, todayKey } from './taskMeta';
+import { addDays, compareByDueThenPriority, dueState, parseDateKey, toDateKey, todayKey } from './taskMeta';
 
 type Mode = 'month' | 'week' | 'day';
 
@@ -34,10 +35,136 @@ const TaskChip = ({ task, onOpen }: { task: Task; onOpen: (t: Task) => void }) =
   </button>
 );
 
+const MONTH_NAMES = Array.from({ length: 12 }, (_, m) => new Date(2000, m, 1).toLocaleDateString(undefined, { month: 'long' }));
+
+interface DateJumpProps {
+  /** Currently shown date, used to prefill the fields. */
+  cursor: Date;
+  /** Visible range, e.g. "October 2026"; also the trigger's label. */
+  title: string;
+  onJumpToMonth: (year: number, month: number) => void;
+  onJumpToDate: (date: Date) => void;
+}
+
+/**
+ * The calendar header title doubles as a "jump to" control: it opens a small popover to
+ * pick a month + year, or an exact date, instead of clicking previous/next repeatedly.
+ */
+const DateJump = ({ cursor, title, onJumpToMonth, onJumpToDate }: DateJumpProps) => {
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState(cursor.getMonth());
+  const [year, setYear] = useState(String(cursor.getFullYear()));
+  const [date, setDate] = useState(toDateKey(cursor));
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const monthRef = useRef<HTMLSelectElement>(null);
+
+  const close = useCallback((restoreFocus = true) => {
+    setOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  }, []);
+  useClickOutside(wrapRef, close, open);
+
+  // Move focus into the popover when it opens (Escape / outside click return it).
+  useEffect(() => {
+    if (open) monthRef.current?.focus();
+  }, [open]);
+
+  const toggle = () => {
+    if (!open) {
+      setMonth(cursor.getMonth());
+      setYear(String(cursor.getFullYear()));
+      setDate(toDateKey(cursor));
+    }
+    setOpen(!open);
+  };
+
+  const yearNumber = Number(year);
+  const yearValid = Number.isInteger(yearNumber) && yearNumber >= 1900 && yearNumber <= 2200;
+
+  const submitMonth = (e: FormEvent) => {
+    e.preventDefault();
+    if (!yearValid) return;
+    onJumpToMonth(yearNumber, month);
+    close();
+  };
+
+  const submitDate = (e: FormEvent) => {
+    e.preventDefault();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    onJumpToDate(parseDateKey(date));
+    close();
+  };
+
+  return (
+    <div className="cal-jump" ref={wrapRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="cal-jump-trigger"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`Jump to date. Showing ${title}`}
+        onClick={toggle}
+      >
+        <CalendarDays size={16} aria-hidden="true" />
+        <span className="cal-title" aria-live="polite">
+          {title}
+        </span>
+        <ChevronDown size={14} aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div className="cal-jump-popover" role="dialog" aria-label="Jump to date">
+          <form onSubmit={submitMonth} className="cal-jump-row">
+            <div className="cal-jump-field">
+              <label htmlFor="cal-jump-month">Month</label>
+              <select id="cal-jump-month" ref={monthRef} value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+                {MONTH_NAMES.map((name, i) => (
+                  <option key={name} value={i}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="cal-jump-field cal-jump-year">
+              <label htmlFor="cal-jump-year">Year</label>
+              <input
+                id="cal-jump-year"
+                type="number"
+                inputMode="numeric"
+                min={1900}
+                max={2200}
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                aria-invalid={!yearValid}
+              />
+            </div>
+            <Button type="submit" size="sm" disabled={!yearValid}>
+              Go
+            </Button>
+          </form>
+          <form onSubmit={submitDate} className="cal-jump-row">
+            <div className="cal-jump-field">
+              <label htmlFor="cal-jump-date">Exact date</label>
+              <input id="cal-jump-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            </div>
+            <Button type="submit" size="sm" variant="secondary" disabled={!date}>
+              Go
+            </Button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /** Focused month / week / day calendar of task due dates. */
 export const TaskCalendar = ({ tasks, onOpen, onCreate }: TaskCalendarProps) => {
   const [mode, setMode] = useState<Mode>('month');
   const [cursor, setCursor] = useState(() => new Date());
+  /** Date picked via "jump to date" or by opening a day; highlighted in the grid. */
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const today = todayKey();
 
   const { byDate, undated } = useMemo(() => {
@@ -78,7 +205,18 @@ export const TaskCalendar = ({ tasks, onOpen, onCreate }: TaskCalendarProps) => 
 
   const openDay = (d: Date) => {
     setCursor(d);
+    setSelectedKey(toDateKey(d));
     setMode('day');
+  };
+
+  // Jumps keep the current view (month / week / day) and move it to the chosen range.
+  const jumpToMonth = (year: number, month: number) => {
+    setCursor(new Date(year, month, 1));
+    setSelectedKey(null);
+  };
+  const jumpToDate = (d: Date) => {
+    setCursor(d);
+    setSelectedKey(toDateKey(d));
   };
 
   const title =
@@ -106,12 +244,17 @@ export const TaskCalendar = ({ tasks, onOpen, onCreate }: TaskCalendarProps) => 
             <Button variant="secondary" size="sm" className="btn-icon" onClick={() => shift(1)} aria-label={`Next ${mode}`}>
               <ChevronRight size={16} />
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setCursor(new Date())}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setCursor(new Date());
+                setSelectedKey(null);
+              }}
+            >
               Today
             </Button>
-            <h3 className="mb-0 ml-2 cal-title" aria-live="polite">
-              {title}
-            </h3>
+            <DateJump cursor={cursor} title={title} onJumpToMonth={jumpToMonth} onJumpToDate={jumpToDate} />
           </div>
           <div className="segmented" role="group" aria-label="Calendar view">
             {(['month', 'week', 'day'] as Mode[]).map((m) => (
@@ -158,7 +301,10 @@ export const TaskCalendar = ({ tasks, onOpen, onCreate }: TaskCalendarProps) => 
               const outside = mode === 'month' && d.getMonth() !== cursor.getMonth();
               const shown = mode === 'month' ? list.slice(0, MONTH_CHIP_LIMIT) : list;
               return (
-                <div key={key} className={`cal-cell ${outside ? 'is-outside' : ''} ${key === today ? 'is-today' : ''}`.trim()}>
+                <div
+                  key={key}
+                  className={`cal-cell ${outside ? 'is-outside' : ''} ${key === today ? 'is-today' : ''} ${key === selectedKey ? 'is-selected' : ''}`.trim()}
+                >
                   <div className="cal-cell-header">
                     <button
                       type="button"

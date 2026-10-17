@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 
 # Optional: bake an absolute API URL into the build (e.g. when NOT using the nginx
@@ -8,13 +8,16 @@ WORKDIR /app
 ARG VITE_API_URL=""
 ENV VITE_API_URL=$VITE_API_URL
 
-COPY package*.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+# Reproducible install from the lockfile.
+RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine
+# Unprivileged nginx: runs as uid 101 and listens on 8080 (non-root cannot bind :80).
+FROM nginxinc/nginx-unprivileged:1.29-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=5 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1

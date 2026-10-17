@@ -31,43 +31,56 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
   );
   const [loading, setLoading] = useState(true);
 
-  const fetchTenants = useCallback(async () => {
-    if (!user) {
-      setTenants([]);
-      setLoading(false);
-      return;
-    }
-    try {
-      const res = await client.get('/api/tenants');
-      const data: Tenant[] = res.data;
-      setTenants(data);
-
-      // If we have tenants but no current or current is invalid, pick the first
-      if (data.length > 0) {
-        const storedId = localStorage.getItem('tenantId');
-        if (!storedId || !data.find(t => t.id === storedId)) {
-          setCurrentTenantIdState(data[0].id);
-          localStorage.setItem('tenantId', data[0].id);
-        }
-      } else {
-        setCurrentTenantIdState(null);
-        localStorage.removeItem('tenantId');
+  /** Stores the workspaces and makes sure the remembered current one still exists. */
+  const applyTenants = useCallback((data: Tenant[]) => {
+    setTenants(data);
+    if (data.length > 0) {
+      const storedId = localStorage.getItem('tenantId');
+      if (!storedId || !data.find(t => t.id === storedId)) {
+        setCurrentTenantIdState(data[0].id);
+        localStorage.setItem('tenantId', data[0].id);
       }
+    } else {
+      setCurrentTenantIdState(null);
+      localStorage.removeItem('tenantId');
+    }
+  }, []);
+
+  /** Reload on demand (e.g. after creating or leaving a workspace). */
+  const fetchTenants = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await client.get<Tenant[]>('/api/tenants');
+      applyTenants(res.data);
     } catch (err) {
       console.error('Failed to fetch tenants', err);
-    } finally {
-      setLoading(false);
     }
-  }, [user]);
+  }, [user, applyTenants]);
 
+  // Initial load for the signed-in user. A late response after sign-out is ignored.
+  // Signed out: nothing to load; the derived values below report "no workspaces".
   useEffect(() => {
-    fetchTenants();
-  }, [fetchTenants]);
+    if (!user) return;
+    let cancelled = false;
+    client
+      .get<Tenant[]>('/api/tenants')
+      .then((res) => {
+        if (!cancelled) applyTenants(res.data);
+      })
+      .catch((err) => console.error('Failed to fetch tenants', err))
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, applyTenants]);
 
-  const setCurrentTenantId = (id: string) => {
+  // Stable identity, so effects that depend on it do not re-run on every render.
+  const setCurrentTenantId = useCallback((id: string) => {
     setCurrentTenantIdState(id);
     localStorage.setItem('tenantId', id);
-  };
+  }, []);
 
   /** Append a newly created tenant and immediately switch to it */
   const addTenant = (tenant: Tenant) => {
@@ -76,10 +89,12 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('tenantId', tenant.id);
   };
 
-  const currentTenant = tenants.find(t => t.id === currentTenantId) || null;
+  // Without a user there are no workspaces, whatever was loaded for a previous session.
+  const visibleTenants = user ? tenants : [];
+  const currentTenant = visibleTenants.find(t => t.id === currentTenantId) || null;
 
   return (
-    <TenantContext.Provider value={{ tenants, currentTenant, loading, setCurrentTenantId, refreshTenants: fetchTenants, addTenant }}>
+    <TenantContext.Provider value={{ tenants: visibleTenants, currentTenant, loading: user ? loading : false, setCurrentTenantId, refreshTenants: fetchTenants, addTenant }}>
       {children}
     </TenantContext.Provider>
   );

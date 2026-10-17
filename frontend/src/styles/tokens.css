@@ -1,0 +1,349 @@
+/* ==========================================================================
+   TenantFlow 2.0 design tokens
+   Identity: cool slate neutrals, one cobalt brand colour, an ink navigation rail
+   that stays dark in both themes, and restrained semantic colours.
+   Components only use semantic tokens (--bg-*, --text-*, --border-*, --primary-*,
+   --success-*, --status-*, --priority-* ...), so the dark theme is a token swap.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* ---- Neutral scale: slate ---- */
+  --gray-0:   #ffffff;
+  --gray-25:  #fbfcfd;
+  --gray-50:  #f5f6f8;
+  --gray-100: #eceef2;
+  --gray-150: #e3e6eb;
+  --gray-200: #d6dae1;
+  --gray-300: #b9bfc9;
+  --gray-400: #8d95a3;
+  --gray-500: #646d7d;
+  --gray-600: #4a5262;
+  --gray-700: #353c4a;
+  --gray-800: #222833;
+  --gray-900: #12161e;
+
+  /* ---- Brand: cobalt ---- */
+  --primary-25:  #f6f8ff;
+  --primary-50:  #eef2ff;
+  --primary-100: #e0e7ff;
+  --primary-200: #c7d2fe;
+  --primary-300: #a2b3fb;
+  --primary-400: #7690f5;
+  --primary-500: #4e6cee;
+  --primary-600: #3352e1;
+  --primary-700: #2740bd;
+  --primary-color: var(--primary-600);
+  --primary-hover: var(--primary-700);
+  --primary-pressed: #213597;
+  --primary-light: var(--primary-50);
+  --primary-text: var(--primary-700);
+  --on-primary: #ffffff;
+
+  /* ---- Surfaces ---- */
+  --bg-color: var(--gray-50);
+  --bg-card: var(--gray-0);
+  --bg-raised: var(--gray-0);
+  --bg-hover: var(--gray-100);
+  --bg-pressed: var(--gray-150);
+  --bg-subtle: var(--gray-25);
+  --bg-muted: var(--gray-100);
+  --bg-header: rgba(255, 255, 255, 0.8);
+  --bg-glass: rgba(255, 255, 255, 0.7);
+  --bg-overlay: rgba(18, 22, 30, 0.44);
+  /* Layout: the ink rail sits on the canvas; work happens on one sheet. */
+  --bg-canvas: #11141b;
+  --bg-sheet: #f7f8fa;
+  --bg-canvas-hover: rgba(18, 22, 30, 0.05);
+
+  /* ---- Navigation rail (dark in both themes) ---- */
+  --rail-bg: #11141b;
+  --rail-text: #c3c9d5;
+  --rail-text-strong: #f3f5f9;
+  --rail-muted: #7d8699;
+  --rail-hover: rgba(255, 255, 255, 0.06);
+  --rail-active-bg: rgba(118, 144, 245, 0.18);
+  --rail-active-text: #ffffff;
+  --rail-active-icon: #9fb2ff;
+  --rail-border: rgba(255, 255, 255, 0.07);
+  --rail-field: rgba(255, 255, 255, 0.05);
+
+  /* ---- Charts: validated categorical slots (dataviz validator, light surface #fff) ---- */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-grid: var(--gray-150);
+  --chart-axis: var(--text-muted);
+
+  /* ---- Selection ---- */
+  --selected-bg: var(--primary-25);
+  --selected-bg-hover: var(--primary-50);
+  --selected-edge: var(--primary-500);
+
+  /* ---- Text ---- */
+  --text-main: var(--gray-900);
+  --text-secondary: var(--gray-600);
+  --text-muted: var(--gray-500);
+  --text-faint: var(--gray-400);
+  --text-inverse: #ffffff;
+
+  /* ---- Borders ---- */
+  --border-color: var(--gray-150);
+  --border-light: var(--gray-100);
+  --border-strong: var(--gray-200);
+  --border-glass: rgba(255, 255, 255, 0.7);
+
+  /* ---- Semantic states ---- */
+  --success-color: #10966f;
+  --success-hover: #0b7d5c;
+  --success-bg: #ecfaf4;
+  --success-border: #b8ead6;
+  --success-text: #0b6e52;
+  --mint: #6ee7b7;
+
+  --warning-color: #c97a0a;
+  --warning-bg: #fff8eb;
+  --warning-border: #f6dda7;
+  --warning-text: #8f5408;
+
+  --danger-color: #d53a4f;
+  --danger-hover: #b72d41;
+  --danger-bg: #fff1f3;
+  --danger-border: #f8c9d0;
+  --danger-text: #ad283c;
+
+  --info-color: #2f7fd0;
+  --info-bg: #eff6ff;
+  --info-border: #c6dcf6;
+  --info-text: #1f5d97;
+
+  /* ---- Task status & priority (always shown with a label or icon too) ---- */
+  --status-todo: var(--gray-400);
+  --status-progress: #3b6ff0;
+  --status-done: #10966f;
+  --status-blocked: #d53a4f;
+  --priority-low: var(--gray-400);
+  --priority-medium: #3b82c4;
+  --priority-high: #d9822b;
+  --priority-urgent: #d53a4f;
+
+  /* ---- Project cover tints (deterministic per project, see visual.ts) ---- */
+  --tint-iris-bg: #eceefe;   --tint-iris-fg: #3a4ccc;
+  --tint-sky-bg: #e7f1fc;    --tint-sky-fg: #1f6ab8;
+  --tint-mint-bg: #e5f6ef;   --tint-mint-fg: #0d7f5e;
+  --tint-amber-bg: #fcf1df;  --tint-amber-fg: #9c5d06;
+  --tint-rose-bg: #fcebee;   --tint-rose-fg: #b23049;
+  --tint-slate-bg: #eceef2;  --tint-slate-fg: #4a5262;
+
+  /* ---- Spacing (4px grid) ---- */
+  --space-0-5: 0.125rem;
+  --space-1: 0.25rem;
+  --space-1-5: 0.375rem;
+  --space-2: 0.5rem;
+  --space-2-5: 0.625rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  /* ---- Typography ---- */
+  --font-sans: 'Inter', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.75rem;
+  --text-4xl: 2.25rem;
+  --text-5xl: 3rem;
+  --tracking-tight: -0.016em;
+  --tracking-tighter: -0.026em;
+
+  /* ---- Layout ---- */
+  --sidebar-width: 248px;
+  --sidebar-width-collapsed: 64px;
+  --header-height: 56px;
+  --content-max: 1280px;
+
+  /* ---- Radii ---- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+  --radius-full: 9999px;
+
+  /* ---- Elevation ---- */
+  --shadow-xs: 0 1px 2px rgba(18, 22, 30, 0.05);
+  --shadow-sm: 0 1px 2px rgba(18, 22, 30, 0.05), 0 2px 6px -1px rgba(18, 22, 30, 0.06);
+  --shadow-md: 0 1px 2px rgba(18, 22, 30, 0.05), 0 6px 16px -4px rgba(18, 22, 30, 0.1);
+  --shadow-lg: 0 2px 4px rgba(18, 22, 30, 0.05), 0 16px 32px -8px rgba(18, 22, 30, 0.14);
+  --shadow-modal: 0 4px 8px rgba(18, 22, 30, 0.06), 0 28px 56px -12px rgba(18, 22, 30, 0.26);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --focus-ring: 0 0 0 3px rgba(51, 82, 225, 0.28);
+  --focus-ring-danger: 0 0 0 3px rgba(213, 58, 79, 0.2);
+
+  /* ---- Motion: short and purposeful ---- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 110ms;
+  --duration-base: 170ms;
+  --duration-slow: 240ms;
+
+  /* ---- Glass ---- */
+  --blur-glass: saturate(160%) blur(14px);
+
+  /* ---- Legacy decorative tokens still referenced by a few components ---- */
+  --aurora-a: rgba(51, 82, 225, 0.12);
+  --aurora-b: rgba(16, 150, 111, 0.08);
+  --dot-color: rgba(51, 82, 225, 0.14);
+  --bg-sidebar: var(--rail-bg);
+
+  /* ---- Z-index ---- */
+  --z-sticky: 20;
+  --z-dropdown: 30;
+  --z-sidebar-overlay: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+  --z-tooltip: 70;
+}
+
+/* ---- Dark theme: same roles, re-tuned for low light ---- */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --gray-0:   #151922;
+  --gray-25:  #181c25;
+  --gray-50:  #0f1219;
+  --gray-100: #1f2430;
+  --gray-150: #272d3a;
+  --gray-200: #313847;
+  --gray-300: #434b5c;
+  --gray-400: #6b7487;
+  --gray-500: #939cae;
+  --gray-600: #b3bac8;
+  --gray-700: #cdd2dc;
+  --gray-800: #e1e5ec;
+  --gray-900: #e6e9ef;
+
+  --primary-25:  #151c35;
+  --primary-50:  #18203d;
+  --primary-100: #1f2a52;
+  --primary-200: #2b3a73;
+  --primary-300: #4058b0;
+  --primary-400: #7d93ff;
+  --primary-500: #8ea1ff;
+  --primary-600: #6f86f7;
+  --primary-700: #b2c0ff;
+  --primary-color: #4a64e8;
+  --primary-hover: #5770ec;
+  --primary-pressed: #3f58d8;
+  --primary-light: #18203d;
+  --primary-text: #b2c0ff;
+  --on-primary: #ffffff;
+
+  --bg-color: #0d1016;
+  --bg-card: #151a23;
+  --bg-raised: #191e28;
+  --bg-hover: #1f2430;
+  --bg-pressed: #272d3a;
+  --bg-subtle: #11151c;
+  --bg-muted: #1c212c;
+  --bg-header: rgba(15, 18, 25, 0.8);
+  --bg-glass: rgba(25, 30, 40, 0.7);
+  --bg-overlay: rgba(0, 0, 0, 0.62);
+  --bg-canvas: #090b10;
+  --bg-sheet: #0f1219;
+  --bg-canvas-hover: rgba(255, 255, 255, 0.05);
+
+  --rail-bg: #090b10;
+  --rail-border: rgba(255, 255, 255, 0.06);
+
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-grid: #232937;
+
+  --selected-bg: #161e38;
+  --selected-bg-hover: #1b2444;
+  --selected-edge: #7d93ff;
+
+  --text-main: #e6e9ef;
+  --text-secondary: #aeb5c3;
+  --text-muted: #8a93a6;
+  --text-faint: #5f687b;
+
+  --border-color: #262c3a;
+  --border-light: #1c212c;
+  --border-strong: #2f3647;
+  --border-glass: rgba(255, 255, 255, 0.06);
+
+  --success-color: #3bb38a;
+  --success-hover: #4fd3a5;
+  --success-bg: #10251e;
+  --success-border: #1d4637;
+  --success-text: #74cfac;
+
+  --warning-color: #d39b45;
+  --warning-bg: #271f10;
+  --warning-border: #4a3a1c;
+  --warning-text: #e3b86e;
+
+  --danger-color: #e06a7d;
+  --danger-hover: #f4788d;
+  --danger-bg: #2a1418;
+  --danger-border: #522530;
+  --danger-text: #f19aa8;
+
+  --info-color: #5ea6ef;
+  --info-bg: #121e2c;
+  --info-border: #22394f;
+  --info-text: #93c4f5;
+
+  --status-todo: #6b7487;
+  --status-progress: #7d93ff;
+  --status-done: #3bb38a;
+  --status-blocked: #e06a7d;
+  --priority-low: #6b7487;
+  --priority-medium: #6aa8e6;
+  --priority-high: #d99550;
+  --priority-urgent: #e06a7d;
+
+  --tint-iris-bg: #1b2142;   --tint-iris-fg: #aab8ff;
+  --tint-sky-bg: #132234;    --tint-sky-fg: #86bdf2;
+  --tint-mint-bg: #11261f;   --tint-mint-fg: #6fdcb5;
+  --tint-amber-bg: #281f10;  --tint-amber-fg: #efbd6a;
+  --tint-rose-bg: #2a151a;   --tint-rose-fg: #ff9fb0;
+  --tint-slate-bg: #1c212c;  --tint-slate-fg: #b5bccb;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32), 0 2px 6px -1px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.32), 0 8px 18px -6px rgba(0, 0, 0, 0.48);
+  --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.32), 0 18px 36px -10px rgba(0, 0, 0, 0.58);
+  --shadow-modal: 0 4px 8px rgba(0, 0, 0, 0.36), 0 30px 60px -12px rgba(0, 0, 0, 0.72);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --focus-ring: 0 0 0 3px rgba(125, 147, 255, 0.42);
+
+  --aurora-a: rgba(125, 147, 255, 0.16);
+  --aurora-b: rgba(52, 196, 147, 0.08);
+  --dot-color: rgba(178, 192, 255, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+  }
+}

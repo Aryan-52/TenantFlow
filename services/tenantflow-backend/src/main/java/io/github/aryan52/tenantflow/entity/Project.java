@@ -14,6 +14,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -71,21 +72,41 @@ public class Project {
 	)
 	private User createdBy;
 
+	/** Project owner / lead: an assignable workspace member; null = unassigned. */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(
+			name = "owner_id",
+			foreignKey = @ForeignKey(name = "fk_projects_owner")
+	)
+	private User owner;
+
+	/** Planning dates (V16); optional, target on or after start. */
+	@Column(name = "start_date")
+	private java.time.LocalDate startDate;
+
+	@Column(name = "target_date")
+	private java.time.LocalDate targetDate;
+
 	@Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "timestamp with time zone")
 	private Instant createdAt;
 
 	@Column(name = "updated_at", nullable = false, columnDefinition = "timestamp with time zone")
 	private Instant updatedAt;
 
+	/** Optimistic-locking version (V9). Incremented by Hibernate on every update. */
+	@Version
+	@Column(nullable = false)
+	private long version;
+
 	@PrePersist
 	void onCreate() {
-		Instant now = Instant.now();
+		Instant now = io.github.aryan52.tenantflow.common.Timestamps.now();
 		createdAt = now;
 		updatedAt = now;
 	}
 
 	@PreUpdate
 	void onUpdate() {
-		updatedAt = Instant.now();
+		updatedAt = io.github.aryan52.tenantflow.common.Timestamps.now();
 	}
 }

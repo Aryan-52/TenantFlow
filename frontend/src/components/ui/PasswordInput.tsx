@@ -14,10 +14,9 @@ export const PasswordInput = React.forwardRef<HTMLInputElement, Omit<InputProps,
           <button
             type="button"
             onClick={() => setVisible((v) => !v)}
-            className="btn btn-ghost btn-icon"
-            style={{ padding: '0.25rem' }}
+            className="icon-button"
             aria-label={visible ? 'Hide password' : 'Show password'}
-            tabIndex={-1}
+            aria-pressed={visible}
           >
             {visible ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>

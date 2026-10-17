@@ -3,6 +3,7 @@ package io.github.aryan52.tenantflow.config;
 import io.github.aryan52.tenantflow.email.EmailService;
 import io.github.aryan52.tenantflow.email.LoggingEmailService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -23,7 +24,7 @@ public class EmailConfig {
 
 	@Bean
 	@ConditionalOnMissingBean(EmailService.class)
-	public EmailService emailService() {
-		return new LoggingEmailService();
+	public EmailService emailService(@Value("${tenantflow.email.log-reset-links:false}") boolean logResetLinks) {
+		return new LoggingEmailService(logResetLinks);
 	}
 }

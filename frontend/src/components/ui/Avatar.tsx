@@ -1,16 +1,21 @@
+import { initials, tintStyle } from './visual';
+
 export interface AvatarProps {
   name: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
   className?: string;
+  /** Show the full name on hover (avatars without visible names next to them). */
+  withTitle?: boolean;
 }
 
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return (parts[0]![0] + parts[parts.length - 1]![0]).toUpperCase();
-}
-
-export const Avatar = ({ name, size = 'md', className = '' }: AvatarProps) => {
-  return <span className={`avatar avatar-${size} ${className}`.trim()}>{getInitials(name)}</span>;
-};
+/** Initials on a stable per-person tint. */
+export const Avatar = ({ name, size = 'md', className = '', withTitle = false }: AvatarProps) => (
+  <span
+    className={`avatar avatar-${size} ${className}`.trim()}
+    style={tintStyle(name, 'avatar')}
+    title={withTitle ? name : undefined}
+    aria-hidden={withTitle ? undefined : true}
+  >
+    {initials(name)}
+  </span>
+);

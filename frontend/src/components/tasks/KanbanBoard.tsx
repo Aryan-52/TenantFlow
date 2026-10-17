@@ -1,5 +1,6 @@
 import { useMemo, useState, type DragEvent } from 'react';
-import { ChevronLeft, ChevronRight, Plus, User } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { Avatar } from '../ui/Avatar';
 import type { Task, TaskStatus } from '../../api/work';
 import { PriorityBadge } from '../ui/Badge';
 import { DueDateLabel } from './DueDateLabel';
@@ -83,10 +84,10 @@ export const KanbanBoard = ({ tasks, pendingIds, onOpen, onMove, onCreate }: Kan
               <span className="kanban-count">{columnTasks.length}</span>
               <button
                 type="button"
-                className="btn btn-ghost btn-icon btn-sm ml-auto"
+                className="icon-button ml-auto kanban-add"
                 onClick={() => onCreate(status)}
                 aria-label={`Add task to ${STATUS_LABELS[status]}`}
-                title="Add task"
+                data-tooltip="Add task"
               >
                 <Plus size={15} />
               </button>
@@ -109,14 +110,20 @@ export const KanbanBoard = ({ tasks, pendingIds, onOpen, onMove, onCreate }: Kan
                       <button type="button" className="kanban-card-title" onClick={() => onOpen(task)}>
                         {task.title}
                       </button>
-                      <div className="flex items-center gap-2 flex-wrap mt-2">
+                      <div className="kanban-card-meta">
                         <PriorityBadge priority={task.priority} />
                         <DueDateLabel task={task} />
                       </div>
                       <div className="kanban-card-footer">
-                        <span className="text-xs text-muted flex items-center gap-1 truncate" style={{ minWidth: 0 }}>
-                          <User size={12} aria-hidden="true" />
-                          {task.assigneeId ? task.assigneeName || 'Unknown' : 'Unassigned'}
+                        <span className="text-xs text-muted flex items-center gap-2 truncate" style={{ minWidth: 0 }}>
+                          {task.assigneeId ? (
+                            <>
+                              <Avatar name={task.assigneeName || '?'} size="xs" />
+                              <span className="truncate">{task.assigneeName || 'Unknown'}</span>
+                            </>
+                          ) : (
+                            <span className="text-faint">Unassigned</span>
+                          )}
                         </span>
                         <span className="flex gap-1 flex-shrink-0">
                           {prev && (
@@ -126,7 +133,7 @@ export const KanbanBoard = ({ tasks, pendingIds, onOpen, onMove, onCreate }: Kan
                               disabled={pending}
                               onClick={() => onMove(task, prev)}
                               aria-label={`Move "${task.title}" to ${STATUS_LABELS[prev]}`}
-                              title={`Move to ${STATUS_LABELS[prev]}`}
+                              data-tooltip={`Move to ${STATUS_LABELS[prev]}`}
                             >
                               <ChevronLeft size={14} />
                             </button>
@@ -138,7 +145,7 @@ export const KanbanBoard = ({ tasks, pendingIds, onOpen, onMove, onCreate }: Kan
                               disabled={pending}
                               onClick={() => onMove(task, next)}
                               aria-label={`Move "${task.title}" to ${STATUS_LABELS[next]}`}
-                              title={`Move to ${STATUS_LABELS[next]}`}
+                              data-tooltip={`Move to ${STATUS_LABELS[next]}`}
                             >
                               <ChevronRight size={14} />
                             </button>

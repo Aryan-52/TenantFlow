@@ -3,20 +3,63 @@ services:
     image: postgres:17
     container_name: tenantflow-postgres
     restart: unless-stopped
+    # Defaults match the existing local database; set POSTGRES_* in .env to change them
+    # (only effective when the data volume is first created).
     environment:
-      POSTGRES_DB: tenantflow
-      POSTGRES_USER: tenantflow
-      POSTGRES_PASSWORD: tenantflow
+      POSTGRES_DB: ${POSTGRES_DB:-tenantflow}
+      POSTGRES_USER: ${POSTGRES_USER:-tenantflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tenantflow}
     ports:
-      - "5432:5432"
+      # Same host port as before, but reachable from this machine only.
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infrastructure/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tenantflow"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
       timeout: 5s
       retries: 5
+    stop_grace_period: 30s
+
+  # Rate-limit counters and short-lived cache entries only - nothing durable lives here
+  # (PostgreSQL is the source of truth), so persistence is off and only keys that carry a
+  # TTL may be evicted under memory pressure.
+  redis:
+    image: redis:7-alpine
+    container_name: tenantflow-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", "", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-lru"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # S3-compatible object storage for attachments (AWS S3 in production). The official
+  # minio/minio images are no longer published, so this uses Bitnami's frozen legacy MinIO
+  # build - fine for local development, never for production. Any S3-compatible server
+  # works (the backend only speaks the S3 API).
+  minio:
+    image: bitnamilegacy/minio:2025.7.23
+    container_name: tenantflow-minio
+    restart: unless-stopped
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-tenantflow-local}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-tenantflow-local-secret}
+      - MINIO_DEFAULT_BUCKETS=tenantflow-attachments
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/bitnami/minio/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   backend:
     build:
@@ -25,13 +68,16 @@ services:
     container_name: tenantflow-backend
     restart: unless-stopped
     ports:
-      - "8081:8080"
+      # Only the API port is published, on localhost only. The management port (8091: metrics, detailed
+      # health) stays on the internal network for Prometheus.
+      - "127.0.0.1:8081:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=prod
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/tenantflow
-      - SPRING_DATASOURCE_USERNAME=tenantflow
-      - SPRING_DATASOURCE_PASSWORD=tenantflow
-      - TENANTFLOW_JWT_SECRET=super-secret-production-jwt-key-change-me-in-production
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-tenantflow}
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-tenantflow}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:-tenantflow}
+      # Local-only default; override via .env. Never reuse this value anywhere real.
+      - TENANTFLOW_JWT_SECRET=${TENANTFLOW_JWT_SECRET:-super-secret-production-jwt-key-change-me-in-production}
       - TENANTFLOW_JWT_EXPIRATION_SECONDS=86400
       # Origins allowed to call the API directly from a browser (bypassing the nginx
       # proxy below). Not needed for the frontend service itself, which talks to the
@@ -46,6 +92,12 @@ services:
       - TENANTFLOW_COOKIE_SECURE=false
       - TENANTFLOW_COOKIE_SAME_SITE=Lax
       - TENANTFLOW_OAUTH_FRONTEND_REDIRECT_URI=http://localhost:3000/oauth-callback
+      - REDIS_HOST=redis
+      - MANAGEMENT_PORT=8091
+      - TENANTFLOW_STORAGE_TYPE=s3
+      - TENANTFLOW_STORAGE_ENDPOINT=http://minio:9000
+      - TENANTFLOW_STORAGE_ACCESS_KEY=${MINIO_ROOT_USER:-tenantflow-local}
+      - TENANTFLOW_STORAGE_SECRET_KEY=${MINIO_ROOT_PASSWORD:-tenantflow-local-secret}
       # Optional: set these on the host (or in a .env file next to this compose file)
       # to enable "Continue with Google". Left blank, Google OAuth stays disabled.
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
@@ -53,6 +105,20 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # The backend degrades gracefully without Redis, so it only needs it started.
+      redis:
+        condition: service_started
+      # Attachments return 503 while storage is down; everything else keeps working.
+      minio:
+        condition: service_started
+    # Health check: status-only /readyz, defined in the Dockerfile (HEALTHCHECK).
+    # Longer than spring.lifecycle.timeout-per-shutdown-phase (20s) so in-flight requests
+    # finish before the container is killed.
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   frontend:
     build:
@@ -66,9 +132,50 @@ services:
     container_name: tenantflow-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      # Host port unchanged (3000); the unprivileged nginx listens on 8080 in the container.
+      - "127.0.0.1:3000:8080"
+    # Health check: GET /healthz, defined in the Dockerfile.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      # nginx resolves "backend" at start-up; waiting for a healthy backend avoids the
+      # "host not found in upstream" crash loop.
+      backend:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- observability (opt-in)
+  # docker compose --profile observability up -d
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: tenantflow-prometheus
+    profiles: ["observability"]
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
     depends_on:
       - backend
 
+  grafana:
+    image: grafana/grafana:12.1.1
+    container_name: tenantflow-grafana
+    profiles: ["observability"]
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   postgres-data:
+  minio-data:

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import type { ProjectStatus, TaskPriority, TaskStatus } from '../../api/work';
 import { PRIORITY_LABELS, PROJECT_STATUS_LABELS, STATUS_LABELS } from '../tasks/taskMeta';
 
@@ -21,19 +22,29 @@ export const RoleBadge = ({ role }: { role: 'OWNER' | 'ADMIN' | 'MEMBER' }) => {
 /** Maps a Task status to a consistent badge color across the app. */
 export const StatusBadge = ({ status }: { status: TaskStatus }) => {
   const color = status === 'DONE' ? 'green' : status === 'IN_PROGRESS' ? 'blue' : 'gray';
-  return <Badge color={color}>{STATUS_LABELS[status]}</Badge>;
+  return <Badge color={color} className="badge-status">{STATUS_LABELS[status]}</Badge>;
 };
 
-const PRIORITY_COLORS: Record<TaskPriority, BadgeProps['color']> = {
-  LOW: 'gray',
-  MEDIUM: 'yellow',
-  HIGH: 'red',
-  URGENT: 'urgent',
-};
-
-/** Maps a Task priority to a consistent badge color across the app. */
+/**
+ * Task priority as signal bars + label: readable at a glance without a wall of coloured
+ * pills. Urgent gets a warning icon instead of bars.
+ */
 export const PriorityBadge = ({ priority }: { priority: TaskPriority }) => {
-  return <Badge color={PRIORITY_COLORS[priority]}>{PRIORITY_LABELS[priority]}</Badge>;
+  const level = priority.toLowerCase();
+  return (
+    <span className={`priority priority-${level}`}>
+      {priority === 'URGENT' ? (
+        <AlertTriangle size={12} aria-hidden="true" />
+      ) : (
+        <span className="priority-bars" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+      )}
+      {PRIORITY_LABELS[priority]}
+    </span>
+  );
 };
 
 const PROJECT_STATUS_COLORS: Record<ProjectStatus, BadgeProps['color']> = {
@@ -44,5 +55,5 @@ const PROJECT_STATUS_COLORS: Record<ProjectStatus, BadgeProps['color']> = {
 };
 
 export const ProjectStatusBadge = ({ status }: { status: ProjectStatus }) => {
-  return <Badge color={PROJECT_STATUS_COLORS[status]}>{PROJECT_STATUS_LABELS[status]}</Badge>;
+  return <Badge color={PROJECT_STATUS_COLORS[status]} className="badge-status">{PROJECT_STATUS_LABELS[status]}</Badge>;
 };

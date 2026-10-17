@@ -4,10 +4,113 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta name="description" content="TenantFlow - projects, tasks and teams in one calm workspace." />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet" />
+    <title>TenantFlow</title>
+    <style>
+      /* Start-up splash. Painted before any JavaScript or CSS bundle arrives, and reused by the
+         app (AppLoading in App.tsx) while the session is restored, so the two are one
+         continuous screen. Colours mirror the --bg-color / brand tokens in styles/tokens.css. */
+      .boot-splash {
+        position: fixed; inset: 0; z-index: 100;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        background: radial-gradient(420px 300px at 50% 42%, rgba(51, 82, 225, 0.10), transparent 70%), #f5f6f8;
+        color: #5b6474; font: 500 13px/1.4 Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        --tile: #dde3ee; --tile-edge: #c4ccdc; --tile-lit: #3352e1; --name: #12161f;
+      }
+      html[data-theme='dark'] .boot-splash {
+        background: radial-gradient(420px 300px at 50% 42%, rgba(77, 107, 245, 0.16), transparent 70%), #0d1016;
+        color: #8a93a6; --tile: #1c2436; --tile-edge: #131a29; --tile-lit: #5c78f4; --name: #eef1f7;
+      }
+      .boot-stack { position: relative; width: 96px; height: 104px; }
+      .boot-tile {
+        position: absolute; left: 22px; width: 52px; height: 52px; border-radius: 9px;
+        background: var(--tile); box-shadow: 0 5px 0 var(--tile-edge);
+        transform: rotateX(57deg) rotateZ(-42deg);
+        animation: boot-layer 1.8s ease-in-out infinite;
+        animation-delay: var(--phase, 0ms);
+      }
+      .boot-tile.t1 { top: 66px; }
+      .boot-tile.t2 { top: 52px; animation-delay: calc(var(--phase, 0ms) + 200ms); }
+      .boot-tile.t3 { top: 38px; animation-delay: calc(var(--phase, 0ms) + 400ms); }
+      .boot-mark {
+        position: absolute; left: 24px; top: 0; filter: drop-shadow(0 10px 14px rgba(28, 46, 140, 0.35));
+        animation: boot-float 1.8s ease-in-out infinite; animation-delay: var(--phase, 0ms);
+      }
+      .boot-name { font-size: 17px; font-weight: 650; letter-spacing: -0.015em; color: var(--name); }
+      .boot-label { min-height: 18px; }
+      /* Progress: fills to 90% over the minimum splash time (--splash-dur), then completes when
+         the app is ready. --progress-phase keeps it continuous when React takes over. */
+      .boot-progress { width: 168px; height: 3px; border-radius: 3px; background: var(--tile); overflow: hidden; }
+      .boot-progress span {
+        display: block; height: 100%; border-radius: inherit; background: var(--tile-lit);
+        transform-origin: left; animation: boot-progress var(--splash-dur, 2600ms) cubic-bezier(0.25, 0.8, 0.3, 1) both;
+        animation-delay: var(--progress-phase, 0ms);
+      }
+      .boot-splash.is-done .boot-progress span { animation: boot-progress-done 240ms ease-out both; }
+      .boot-splash.is-leaving { opacity: 0; transition: opacity 280ms ease; }
+      .boot-slow-react { margin: 4px 0 0; max-width: 300px; text-align: center; }
+      .boot-slow-react button { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--tile-lit); cursor: pointer; text-decoration: underline; }
+      @keyframes boot-progress { from { transform: scaleX(0.04); } to { transform: scaleX(0.9); } }
+      @keyframes boot-progress-done { from { transform: scaleX(0.9); } to { transform: scaleX(1); } }
+      .boot-slow { display: none; max-width: 300px; text-align: center; }
+      .boot-slow a { color: var(--tile-lit); font-weight: 600; }
+      .boot-splash.is-slow .boot-slow { display: block; }
+      @keyframes boot-layer { 0%, 60%, 100% { background: var(--tile); } 25% { background: var(--tile-lit); } }
+      @keyframes boot-float { 50% { transform: translateY(-4px); } }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-tile, .boot-mark, .boot-progress span { animation: none; }
+        .boot-progress span { transform: scaleX(0.6); }
+        .boot-splash.is-done .boot-progress span { transform: none; }
+        .boot-splash.is-leaving { transition: none; }
+      }
+    </style>
+    <script>
+      // Apply the saved theme before first paint (no light flash in dark mode).
+      (function () {
+        try {
+          var pref = localStorage.getItem('tf.theme') || 'system';
+          var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {
+          document.documentElement.dataset.theme = 'light';
+        }
+        // Minimum splash time: the first entry in this tab gets the full splash, a reload of the
+        // same tab a short one. StartupSplash (App) reads the same value.
+        var entered = false;
+        try { entered = sessionStorage.getItem('tf.entered') === '1'; } catch (e) {}
+        var ms = entered ? 1200 : 2600;
+        document.documentElement.style.setProperty('--splash-ms', String(ms));
+        document.documentElement.style.setProperty('--splash-dur', ms + 'ms');
+      })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Shown until the app's JavaScript renders (React replaces #root's content). -->
+    <div id="root">
+      <div class="boot-splash" role="status" aria-label="Loading TenantFlow">
+        <div class="boot-stack" aria-hidden="true">
+          <span class="boot-tile t1"></span><span class="boot-tile t2"></span><span class="boot-tile t3"></span>
+          <svg class="boot-mark" viewBox="0 0 32 32" width="48" height="48"><rect width="32" height="32" rx="8" fill="#3352e1"/><path d="M9.5 10.5h13M16 10.5v11" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="22.5" cy="21.5" r="2.5" fill="#6ee7b7"/></svg>
+        </div>
+        <div class="boot-name">TenantFlow</div>
+        <div class="boot-progress" aria-hidden="true"><span></span></div>
+        <div class="boot-label">Starting TenantFlow…</div>
+        <p class="boot-slow">TenantFlow is taking longer than usual to start. Check your connection, then <a href="">reload the page</a>.</p>
+      </div>
+    </div>
+    <noscript><p style="text-align:center;font-family:system-ui,sans-serif">TenantFlow needs JavaScript to run.</p></noscript>
+    <script>
+      // If the app has not started after 15 s (network or script failure), say so instead of
+      // leaving an endless splash. React replaces this element as soon as it renders.
+      setTimeout(function () {
+        var s = document.querySelector('#root > .boot-splash');
+        if (s) s.className += ' is-slow';
+      }, 15000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

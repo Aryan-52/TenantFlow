@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import React, { useEffect, useState } from 'react';
 import client from '../api/client';
 import { useTenant } from '../contexts/TenantContext';
@@ -14,6 +15,7 @@ import { TableSkeleton } from '../components/ui/Skeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { EmptyState } from '../components/ui/EmptyState';
 import { PageHeader } from '../components/ui/PageHeader';
+import { useToast } from '../contexts/ToastContext';
 import { Users, UserPlus, Trash2 } from 'lucide-react';
 
 export interface Member {
@@ -23,11 +25,16 @@ export interface Member {
   email: string;
   role: 'OWNER' | 'ADMIN' | 'MEMBER';
   joinedAt: string;
+  /** Open tasks assigned to this member (member list only). */
+  openTasks?: number | null;
+  /** Of those, how many are overdue (member list only). */
+  overdueTasks?: number | null;
 }
 
 const Members = () => {
   const { currentTenant } = useTenant();
   const { user } = useAuth();
+  const toast = useToast();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -82,6 +89,7 @@ const Members = () => {
         role: addRole,
       });
       setShowAdd(false);
+      toast.success(`${addEmail} added to ${currentTenant.name}`);
       fetchMembers();
     } catch (err: any) {
       setAddError(err.response?.data?.message || 'Failed to add member');
@@ -95,6 +103,7 @@ const Members = () => {
     setActionError('');
     try {
       await client.put(`/api/tenants/${currentTenant.id}/members/${memberId}`, { role: newRole });
+      toast.success('Role updated');
       fetchMembers();
     } catch (err: any) {
       setActionError(err.response?.data?.message || 'Failed to update role');
@@ -108,6 +117,7 @@ const Members = () => {
     try {
       await client.delete(`/api/tenants/${currentTenant.id}/members/${deleteId}`);
       setDeleteId(null);
+      toast.success('Member removed');
       fetchMembers();
     } catch (err: any) {
       setActionError(err.response?.data?.message || 'Failed to remove member');
@@ -118,11 +128,18 @@ const Members = () => {
 
   if (!currentTenant) return null;
 
+  const removing = members.find((m) => m.id === deleteId);
+  const roleCounts = (['OWNER', 'ADMIN', 'MEMBER'] as const).map((role) => ({
+    role,
+    count: members.filter((m) => m.role === role).length,
+  }));
+  const ROLE_PLURAL = { OWNER: 'Owners', ADMIN: 'Admins', MEMBER: 'Members' } as const;
+
   return (
     <div>
       <PageHeader
-        title="Team members"
-        subtitle={`Manage who has access to ${currentTenant.name}.`}
+        title="Members"
+        subtitle={`People with access to ${currentTenant.name}, what they can do and what is on their plate.`}
         actions={
           canManage ? (
             <Button onClick={openAdd}>
@@ -159,7 +176,7 @@ const Members = () => {
             ]}
           />
         </form>
-        <div className="flex justify-end gap-2">
+        <div className="modal-actions">
           <Button variant="secondary" onClick={() => setShowAdd(false)}>
             Cancel
           </Button>
@@ -172,7 +189,7 @@ const Members = () => {
       <ConfirmDialog
         isOpen={!!deleteId}
         title="Remove member"
-        message="Are you sure you want to remove this member from the workspace? They will lose all access."
+        message={`Remove ${removing?.name ?? 'this member'} from ${currentTenant.name}? They lose access immediately, and projects they own become unassigned.`}
         confirmText="Remove member"
         isDestructive
         isLoading={deleteLoading}
@@ -190,63 +207,114 @@ const Members = () => {
           action={canManage ? <Button onClick={openAdd}>Add member</Button> : undefined}
         />
       ) : (
-        <Table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Joined</th>
-              {canManage && <th style={{ width: '80px' }}>Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((m) => {
-              const isSelf = m.userId === user?.id;
-              const isHigherRole = m.role === 'OWNER' && !isOwner;
-              const isDisabled = isSelf || isHigherRole;
+        <>
+          <div className="role-summary" aria-label="Members by role">
+            <span>
+              <strong>{members.length}</strong> {members.length === 1 ? 'person' : 'people'}
+            </span>
+            {roleCounts
+              .filter((rc) => rc.count > 0)
+              .map((rc) => (
+                <span key={rc.role}>
+                  <strong>{rc.count}</strong> {rc.count === 1 ? ROLE_PLURAL[rc.role].slice(0, -1) : ROLE_PLURAL[rc.role]}
+                </span>
+              ))}
+          </div>
+          <details className="role-guide">
+            <summary>What can each role do?</summary>
+            <dl>
+              <div><dt>Member</dt><dd>Views everything in the workspace; creates, edits and comments on tasks; uploads files.</dd></div>
+              <div><dt>Admin</dt><dd>Everything a member can, plus creating, editing and deleting projects and tasks, and managing members.</dd></div>
+              <div><dt>Owner</dt><dd>Everything an admin can, plus managing owners and deleting the workspace.</dd></div>
+            </dl>
+          </details>
+          <Table>
+            <thead>
+              <tr>
+                <th>Person</th>
+                <th>Role</th>
+                <th>Open work</th>
+                <th>Joined</th>
+                {canManage && (
+                  <th style={{ width: '64px' }}>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((m) => {
+                const isSelf = m.userId === user?.id;
+                const isHigherRole = m.role === 'OWNER' && !isOwner;
+                const isDisabled = isSelf || isHigherRole;
 
-              return (
-                <tr key={m.id}>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <Avatar name={m.name} size="sm" />
-                      <span className="font-medium">{m.name}</span>
-                      {isSelf && <RoleBadgeYou />}
-                    </div>
-                  </td>
-                  <td className="text-muted">{m.email}</td>
-                  <td>
-                    {canManage && !isDisabled ? (
-                      <select value={m.role} onChange={(e) => handleRoleChange(m.id, e.target.value)} style={{ padding: '0.25rem 1.5rem 0.25rem 0.5rem', fontSize: 'var(--text-sm)' }}>
-                        <option value="MEMBER">Member</option>
-                        <option value="ADMIN">Admin</option>
-                        {(isOwner || m.role === 'OWNER') && <option value="OWNER">Owner</option>}
-                      </select>
-                    ) : (
-                      <RoleBadge role={m.role} />
-                    )}
-                  </td>
-                  <td className="text-muted text-sm">{new Date(m.joinedAt).toLocaleDateString()}</td>
-                  {canManage && (
+                return (
+                  <tr key={m.id}>
                     <td>
-                      {!isDisabled && (
-                        <Button variant="ghost" size="sm" className="btn-icon text-danger" onClick={() => setDeleteId(m.id)} title="Remove member">
-                          <Trash2 size={16} />
-                        </Button>
+                      <div className="member-cell">
+                        <Avatar name={m.name} size="md" />
+                        <div style={{ minWidth: 0 }}>
+                          <div className="member-name">
+                            <Link to={`/tenants/${currentTenant.id}/members/${m.userId}`} className="truncate table-primary-link">{m.name}</Link>
+                            {isSelf && <span className="you-badge">You</span>}
+                          </div>
+                          <div className="member-email truncate">{m.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {canManage && !isDisabled ? (
+                        <select value={m.role} onChange={(e) => handleRoleChange(m.id, e.target.value)} aria-label={`Role of ${m.name}`}>
+                          <option value="MEMBER">Member</option>
+                          <option value="ADMIN">Admin</option>
+                          {(isOwner || m.role === 'OWNER') && <option value="OWNER">Owner</option>}
+                        </select>
+                      ) : (
+                        <RoleBadge role={m.role} />
                       )}
                     </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
+                    <td>
+                      {m.openTasks == null ? (
+                        <span className="text-faint text-sm">—</span>
+                      ) : m.openTasks === 0 ? (
+                        <span className="text-faint text-sm">No open tasks</span>
+                      ) : (
+                        <span className="workload-cell">
+                          <span className="tabular font-semibold">{m.openTasks}</span>
+                          <span className="text-muted text-sm">open</span>
+                          {!!m.overdueTasks && <span className="badge badge-red">{m.overdueTasks} overdue</span>}
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-muted text-sm">
+                      {new Date(m.joinedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                    </td>
+                    {canManage && (
+                      <td>
+                        {!isDisabled && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="btn-icon text-danger"
+                            onClick={() => setDeleteId(m.id)}
+                            aria-label={`Remove ${m.name}`}
+                            data-tooltip="Remove"
+                          >
+                            <Trash2 size={15} />
+                          </Button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </>
       )}
     </div>
   );
 };
 
-const RoleBadgeYou = () => <span className="badge badge-blue">You</span>;
 
 export default Members;

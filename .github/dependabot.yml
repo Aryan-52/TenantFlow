@@ -1,0 +1,23 @@
+# Keeps pinned GitHub Actions SHAs, Maven and npm dependencies and base images current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: maven
+    directory: /services/tenantflow-backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: docker
+    directories:
+      - /services/tenantflow-backend
+      - /frontend
+    schedule:
+      interval: weekly

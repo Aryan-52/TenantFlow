@@ -26,8 +26,7 @@ export const SearchInput = ({ value, onChange, placeholder = 'Search...', classN
       {value && (
         <button
           type="button"
-          className="input-icon-trailing btn btn-ghost btn-icon"
-          style={{ padding: '0.25rem' }}
+          className="input-icon-trailing icon-button"
           onClick={() => onChange('')}
           aria-label="Clear search"
         >

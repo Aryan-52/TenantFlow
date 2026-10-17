@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { PasswordInput } from '../components/ui/PasswordInput';
 import { ErrorState } from '../components/ui/ErrorState';
+import { AuthLayout } from '../components/layout/AuthLayout';
 
 // Vite dev server has no reverse proxy, so hitting the OAuth entry point needs the
 // absolute backend URL there; in Docker, nginx proxies /oauth2/* same-origin (see
@@ -80,85 +81,71 @@ const Login = () => {
   };
 
   return (
-    <div className="auth-container">
-      <div className="card auth-card card-padded">
-        <div className="auth-brand" style={{ flexDirection: 'column' }}>
-          <span className="sidebar-brand-mark" style={{ width: 40, height: 40, fontSize: '1.25rem', marginBottom: 'var(--space-2)' }}>
-            T
-          </span>
-          <h2 className="m-0">Welcome back</h2>
-          <p className="text-muted text-sm m-0">Sign in to your TenantFlow account</p>
-        </div>
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to continue to your workspace."
+      footer={
+        <>
+          New to TenantFlow? <Link to="/register">Create an account</Link>
+        </>
+      }
+    >
+      <ErrorState message={error} />
+      {oauthFailed && !error && (
+        <ErrorState message="We couldn't sign you in with Google. Please try again or use your email and password." />
+      )}
 
-        <ErrorState message={error} />
-        {oauthFailed && !error && (
-          <ErrorState message="We couldn't sign you in with Google. Please try again or use your email and password." />
-        )}
-
-        <form onSubmit={handleSubmit} noValidate>
-          <Input
-            label="Email"
-            type="email"
-            icon={<Mail size={15} />}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            error={fieldErrors.email}
-            required
-            autoComplete="email"
-            autoFocus
-          />
-          <PasswordInput
-            label="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            error={fieldErrors.password}
-            required
-            autoComplete="current-password"
-          />
-          <div className="flex justify-between items-center mb-4">
-            <label className="checkbox-label">
-              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
-              Remember me
-            </label>
-            <Link to="/forgot-password" className="text-sm" style={{ color: 'var(--primary-color)', fontWeight: 500 }}>
-              Forgot password?
-            </Link>
-          </div>
-          <Button type="submit" fullWidth isLoading={loading} disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign In'}
-          </Button>
-        </form>
-
-        <div className="divider-with-text">or</div>
-
-        {googleAvailable ? (
-          <a href={`${API_BASE}/oauth2/authorization/google`} className="btn btn-secondary w-full justify-center">
-            <GoogleIcon /> Continue with Google
-          </a>
-        ) : (
-          <>
-            <button
-              type="button"
-              className="btn btn-secondary w-full justify-center"
-              disabled
-              title="Google sign-in is not configured."
-            >
-              <GoogleIcon /> Continue with Google
-            </button>
-            {googleAvailable === false && (
-              <p className="text-center text-muted text-xs mt-2">Google sign-in is not configured.</p>
-            )}
-          </>
-        )}
-
-        <p className="text-center text-muted mt-6 text-sm">
-          Don't have an account?{' '}
-          <Link to="/register" style={{ color: 'var(--primary-color)', fontWeight: 500 }}>
-            Sign up
+      <form onSubmit={handleSubmit} noValidate>
+        <Input
+          id="login-email"
+          label="Email"
+          type="email"
+          icon={<Mail size={15} />}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          error={fieldErrors.email}
+          required
+          autoComplete="email"
+          autoFocus
+          placeholder="you@company.com"
+        />
+        <PasswordInput
+          label="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          error={fieldErrors.password}
+          required
+          autoComplete="current-password"
+        />
+        <div className="flex justify-between items-center mb-6">
+          <label className="checkbox-label">
+            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+            Keep me signed in
+          </label>
+          <Link to="/forgot-password" className="auth-inline-link">
+            Forgot password?
           </Link>
-        </p>
-      </div>
-    </div>
+        </div>
+        <Button type="submit" fullWidth isLoading={loading} disabled={loading} className="btn-lg">
+          {loading ? 'Signing in…' : 'Sign in'}
+        </Button>
+      </form>
+
+      <div className="divider-with-text">or</div>
+
+      {googleAvailable ? (
+        <a href={`${API_BASE}/oauth2/authorization/google`} className="btn btn-secondary btn-lg w-full">
+          <GoogleIcon /> Continue with Google
+        </a>
+      ) : (
+        <>
+          <button type="button" className="btn btn-secondary btn-lg w-full" disabled title="Google sign-in is not configured.">
+            <GoogleIcon /> Continue with Google
+          </button>
+          {googleAvailable === false && <p className="text-center text-muted text-xs mt-2">Google sign-in is not configured.</p>}
+        </>
+      )}
+    </AuthLayout>
   );
 };
 

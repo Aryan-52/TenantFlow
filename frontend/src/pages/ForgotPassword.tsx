@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { ErrorState } from '../components/ui/ErrorState';
 import { Alert } from '../components/ui/Alert';
+import { AuthLayout } from '../components/layout/AuthLayout';
 
 const GENERIC_MESSAGE = 'If an account exists for this email, you will receive password reset instructions.';
 
@@ -33,53 +34,44 @@ const ForgotPassword = () => {
   };
 
   return (
-    <div className="auth-container">
-      <div className="card auth-card card-padded">
-        <div className="auth-brand" style={{ flexDirection: 'column' }}>
-          <span className="sidebar-brand-mark" style={{ width: 40, height: 40, fontSize: '1.25rem', marginBottom: 'var(--space-2)' }}>
-            T
-          </span>
-          <h2 className="m-0">Forgot your password?</h2>
-          <p className="text-muted text-sm m-0 text-center">
-            Enter your email and we'll send you instructions to reset it.
-          </p>
-        </div>
-
-        {submitted ? (
-          <>
-            <Alert variant="success">{GENERIC_MESSAGE}</Alert>
-            <Link to="/login" className="btn btn-secondary w-full mt-4 justify-center">
-              <ArrowLeft size={16} /> Back to sign in
-            </Link>
-          </>
-        ) : (
-          <>
-            <ErrorState message={error} />
-            <form onSubmit={handleSubmit} noValidate>
-              <Input
-                label="Email"
-                type="email"
-                icon={<Mail size={15} />}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                autoFocus
-              />
-              <Button type="submit" fullWidth isLoading={loading} disabled={loading}>
-                {loading ? 'Sending...' : 'Send reset instructions'}
-              </Button>
-            </form>
-            <p className="text-center text-muted mt-6 text-sm">
-              Remembered your password?{' '}
-              <Link to="/login" style={{ color: 'var(--primary-color)', fontWeight: 500 }}>
-                Sign in
-              </Link>
-            </p>
-          </>
-        )}
-      </div>
-    </div>
+    <AuthLayout
+      title={submitted ? 'Check your email' : 'Reset your password'}
+      subtitle={submitted ? undefined : "Enter the email you signed up with and we'll send you a reset link."}
+      footer={
+        <>
+          Remembered it? <Link to="/login">Back to sign in</Link>
+        </>
+      }
+    >
+      {submitted ? (
+        <>
+          <Alert variant="success">{GENERIC_MESSAGE}</Alert>
+          <Link to="/login" className="btn btn-secondary btn-lg w-full mt-4">
+            <ArrowLeft size={16} /> Back to sign in
+          </Link>
+        </>
+      ) : (
+        <>
+          <ErrorState message={error} />
+          <form onSubmit={handleSubmit} noValidate>
+            <Input
+              label="Email"
+              type="email"
+              icon={<Mail size={15} />}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              autoFocus
+              placeholder="you@company.com"
+            />
+            <Button type="submit" fullWidth className="btn-lg" isLoading={loading} disabled={loading}>
+              {loading ? 'Sending…' : 'Send reset link'}
+            </Button>
+          </form>
+        </>
+      )}
+    </AuthLayout>
   );
 };
 

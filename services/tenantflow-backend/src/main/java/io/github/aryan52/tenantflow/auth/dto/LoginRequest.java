@@ -7,6 +7,10 @@ import jakarta.validation.constraints.Size;
 public record LoginRequest(
 		@NotBlank @Email @Size(max = 320) String email,
 		@NotBlank String password,
-		boolean rememberMe
+		Boolean rememberMe
 ) {
+	/** Optional in the JSON; absent means a non-persistent session. */
+	public boolean rememberMeRequested() {
+		return Boolean.TRUE.equals(rememberMe);
+	}
 }
