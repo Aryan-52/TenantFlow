@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21-jdk-noble AS build
+FROM eclipse-temurin:24-jdk-noble AS build
 WORKDIR /app
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
@@ -8,7 +8,7 @@ RUN ./mvnw -B -ntp dependency:go-offline || true
 COPY src ./src
 RUN ./mvnw -B -ntp clean package -DskipTests
 
-FROM eclipse-temurin:21-jre-noble
+FROM eclipse-temurin:24-jre-noble
 # Run as an unprivileged, fixed-uid user; the application jar stays root-owned (read-only).
 RUN groupadd --system --gid 10001 tenantflow \
     && useradd --system --uid 10001 --gid tenantflow --no-create-home --shell /usr/sbin/nologin tenantflow
